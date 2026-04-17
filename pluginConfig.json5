@@ -1,0 +1,16 @@
+{
+  active: 0,           // 1 = plugin attivo, 0 = disabilitato
+  isInstalled: 0,      // impostato a 1 automaticamente dopo installPlugin()
+  weight: 100,         // priorità di caricamento (bubble sort)
+  installedVersion: "0.0.0",
+
+  dependency: {},      // dipendenze da altri plugin ital8cms (da definire)
+
+  nodeModuleDependency: {
+    // dipendenze npm aggiuntive (da definire con la scelta della libreria OCR)
+  },
+
+  custom: {
+    // Configurazioni specifiche del processore OCR (da definire nella prossima fase)
+  },
+}

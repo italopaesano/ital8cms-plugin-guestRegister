@@ -1,0 +1,10 @@
+{
+  name: "guestRegister",
+  version: "0.1.0",
+  description: "Plugin per l'estrazione dei dati dai documenti di identità degli ospiti di strutture ricettive. Riceve la foto di un documento via multipart/form-data e restituisce i dati strutturati per la compilazione del portale allogiati.",
+  author: "italopaesano",
+  email: "italopaesano@protonmail.com",
+  license: "ISC",
+  keywords: ["guest", "register", "ocr", "document", "portale-allogiati", "strutture-ricettive"],
+  repository: "https://github.com/italopaesano/ital8cms-plugin-guestRegister",
+}
