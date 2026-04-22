@@ -95,12 +95,14 @@
 (function () {
   'use strict';
 
-  const API_BASE = '<%= passData.apiPrefix %>/guestRegister';
-  const REQUIRED = ['cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento'];
+  const API_BASE         = '<%= passData.apiPrefix %>/guestRegister';
+  const DOCUMENTI_COMUNI = <%- JSON.stringify(passData.plugin.documentiComuni) %>;
+  const REQUIRED         = ['cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento'];
 
-  let guests   = [];
-  let nextId   = 1;
-  let guestNum = 0;
+  let guests       = [];
+  let nextId       = 1;
+  let guestNum     = 0;
+  let documentiAll = null;
 
   // ── DOM helpers ──────────────────────────────────────────────────────────────
 
@@ -109,6 +111,81 @@
   function $campo(id, f)     { return $card(id).querySelector(`.campo[data-field="${f}"]`); }
   function getVal(id, f)     { const el = $campo(id, f); return el ? el.value.trim() : ''; }
   function setVal(id, f, v)  { const el = $campo(id, f); if (el) el.value = v || ''; }
+
+  // ── Tipo documento: lazy load + two-select ───────────────────────────────────
+
+  async function getDocumentiAll() {
+    if (documentiAll) return documentiAll;
+    try {
+      const res = await fetch(`${API_BASE}/documenti`);
+      documentiAll = await res.json();
+    } catch {
+      documentiAll = [];
+    }
+    return documentiAll;
+  }
+
+  function getTipoDocValue(id) {
+    const card = $card(id);
+    if (!card) return '';
+    const altroSel = card.querySelector('.campo-tipodoc-altro');
+    if (altroSel && !altroSel.classList.contains('d-none')) return altroSel.value || '';
+    const comuneSel = card.querySelector('.campo-tipodoc-comune');
+    if (!comuneSel) return '';
+    const v = comuneSel.value;
+    return v === '__altro__' ? '' : (v || '');
+  }
+
+  function populateAltroSelect(sel, docs) {
+    sel.innerHTML = '<option value="">— seleziona tipo —</option>';
+    docs.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value       = d.codice;
+      opt.textContent = `${d.codice} — ${d.descrizione}`;
+      sel.appendChild(opt);
+    });
+  }
+
+  async function setTipoDoc(id, codice) {
+    if (!codice) return;
+    const card = $card(id);
+    if (!card) return;
+    const comuneSel = card.querySelector('.campo-tipodoc-comune');
+    const altroSel  = card.querySelector('.campo-tipodoc-altro');
+    const isComune  = DOCUMENTI_COMUNI.some(d => d.codice === codice);
+    if (isComune) {
+      if (comuneSel) comuneSel.value = codice;
+      if (altroSel)  altroSel.classList.add('d-none');
+    } else {
+      if (comuneSel) comuneSel.value = '__altro__';
+      const docs = await getDocumentiAll();
+      if (altroSel) {
+        if (altroSel.options.length <= 1) populateAltroSelect(altroSel, docs);
+        altroSel.value = codice;
+        altroSel.classList.remove('d-none');
+      }
+    }
+  }
+
+  function setupTipoDocumento(id) {
+    const card      = $card(id);
+    if (!card) return;
+    const comuneSel = card.querySelector('.campo-tipodoc-comune');
+    const altroSel  = card.querySelector('.campo-tipodoc-altro');
+    if (!comuneSel || !altroSel) return;
+
+    comuneSel.addEventListener('change', async () => {
+      if (comuneSel.value === '__altro__') {
+        const docs = await getDocumentiAll();
+        if (altroSel.options.length <= 1) populateAltroSelect(altroSel, docs);
+        altroSel.classList.remove('d-none');
+        altroSel.focus();
+      } else {
+        altroSel.classList.add('d-none');
+        altroSel.value = '';
+      }
+    });
+  }
 
   // ── Guest card HTML ──────────────────────────────────────────────────────────
 
@@ -151,6 +228,26 @@
           <select class="form-select form-select-sm campo"
                   data-id="${id}" data-field="${field}">
             <option value="">—</option>${opts}
+          </select>
+        </div>`;
+    }
+
+    function fieldTipoDoc(colClass) {
+      const star = ' <span class="text-danger">*</span>';
+      const opts = DOCUMENTI_COMUNI
+        .map(d => `<option value="${d.codice}">${d.codice} — ${d.descrizione}</option>`)
+        .join('');
+      return `
+        <div class="${colClass}">
+          <label class="form-label small mb-1">Tipo doc${star} ${icon('tipoDocumento')}</label>
+          <select class="form-select form-select-sm campo campo-tipodoc-comune"
+                  data-id="${id}" data-field="tipoDocumento">
+            <option value="">—</option>
+            ${opts}
+            <option value="__altro__">Altro tipo…</option>
+          </select>
+          <select class="form-select form-select-sm mt-1 d-none campo-tipodoc-altro">
+            <option value="">— seleziona tipo —</option>
           </select>
         </div>`;
     }
@@ -221,9 +318,8 @@
                   [['M','M'],['F','F']]),
                 fieldText('dataNascita', 'Data nascita', true, 'col-8 col-sm-4',
                   { placeholder: 'GG/MM/AAAA' }),
-                fieldSelect('tipoDocumento', 'Tipo doc', true, 'col-6 col-sm-3',
-                  [["IDE","Carta d'Identità"],['PAS','Passaporto'],['PAT','Patente']]),
-                fieldText('numeroDocumento', 'N° documento', true, 'col-6 col-sm-3',
+                fieldTipoDoc('col-12 col-sm-4'),
+                fieldText('numeroDocumento', 'N° documento', true, 'col-12 col-sm-2',
                   { placeholder: 'Numero' }),
               ])}
 
@@ -449,6 +545,9 @@
     // Autocomplete inputs
     card.querySelectorAll('.ac-input').forEach(setupAutocomplete);
 
+    // Tipo documento two-select
+    setupTipoDocumento(id);
+
     if (!isCapogruppo) {
       card.querySelector('.btn-rimuovi').addEventListener('click', () => {
         guests = guests.filter(g => g.id !== id);
@@ -510,12 +609,14 @@
   // ── Raccoglie i dati del form per un ospite ───────────────────────────────────
 
   function collectGuest(id) {
-    return [
-      'cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento',
+    const data = [
+      'cognome', 'nome', 'sesso', 'dataNascita', 'numeroDocumento',
       'luogoNascita', 'provinciaNascita', 'statoNascita', 'cittadinanza',
       'luogoRilascio', 'provinciaRilascio', 'statoRilascio',
       'dataArrivo', 'dataPartenza',
     ].reduce((obj, f) => { obj[f] = getVal(id, f) || null; return obj; }, {});
+    data.tipoDocumento = getTipoDocValue(id) || null;
+    return data;
   }
 
   // ── Riepilogo ─────────────────────────────────────────────────────────────────
