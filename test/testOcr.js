@@ -50,17 +50,22 @@ processDocument(buffer, { debug })
     console.log(`Processor usato : ${result.processor}`);
     console.log(`Risultato       : ${result.partial ? 'PARZIALE' : 'COMPLETO'}`);
 
+    const required       = ['cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento'];
+    const missingRequired = required.filter(f => !result.data[f]);
+
     if (result.partial) {
       console.log('\nCAMPI OBBLIGATORI MANCANTI (da inserire manualmente):');
-      const required = ['cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento'];
-      required
-        .filter(f => !result.data[f])
-        .forEach(f => console.log(`  - ${f}`));
+      missingRequired.forEach(f => console.log(`  - ${f}`));
     }
 
     if (result.warnings.length) {
-      console.log('\nWarnings (campi da completare manualmente):');
-      result.warnings.forEach(w => console.log(`  - ${w}`));
+      const filteredWarnings = result.warnings.filter(
+        w => !missingRequired.some(f => w.startsWith(f + ':'))
+      );
+      if (filteredWarnings.length) {
+        console.log('\nWarnings (campi da completare manualmente):');
+        filteredWarnings.forEach(w => console.log(`  - ${w}`));
+      }
     }
   })
   .catch((err) => {

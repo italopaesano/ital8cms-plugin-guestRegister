@@ -6,7 +6,10 @@ const { createWorker } = require('tesseract.js');
 // Per le prime prove è accettabile. In produzione ottimizzare
 // con un worker persistente inizializzato in loadPlugin().
 async function ocrImage(buffer) {
-  const worker = await createWorker('ita+eng', 1, { logger: () => {} });
+  const worker = await createWorker('eng', 1, {
+    logger:       () => {},
+    errorHandler: () => {},
+  });
   try {
     const { data: { text } } = await worker.recognize(buffer);
     return text;
