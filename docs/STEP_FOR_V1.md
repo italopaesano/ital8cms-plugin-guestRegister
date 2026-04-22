@@ -47,9 +47,12 @@ Roadmap verso la prima versione stabile del plugin `guestRegister`.
   - `processors/mrzParser.js` — ricerca e parsing MRZ (TD1/TD2/TD3)
   - `processors/fieldExtractor.js` — stub per documenti senza MRZ (fase successiva)
   - `processors/index.js` — dispatcher: tenta MRZ → fallback estrazione testuale
+- [x] Setup test standalone: `package.json` + `test/testOcr.js`
+  - `npm install` nella cartella plugin installa `tesseract.js` e `mrz`
+  - `node test/testOcr.js <immagine>` testa il pipeline senza il CMS
+- [ ] Test su documenti reali italiani e calibrazione Tesseract
 - [ ] Implementare `processors/fieldExtractor.js` per documenti senza MRZ (es. Patente)
 - [ ] Gestire gli errori di riconoscimento (immagine sfocata, documento non riconosciuto)
-- [ ] Test su documenti reali italiani e calibrazione Tesseract
 
 ## 4. Mapping al formato portale alloggiati
 

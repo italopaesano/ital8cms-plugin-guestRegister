@@ -1,0 +1,13 @@
+{
+  "name": "ital8cms-plugin-guestregister",
+  "version": "0.1.0",
+  "description": "Plugin ital8cms per estrazione dati da documenti di identità degli ospiti",
+  "private": true,
+  "scripts": {
+    "test:ocr": "node test/testOcr.js"
+  },
+  "dependencies": {
+    "mrz": "^4.0.0",
+    "tesseract.js": "^5.0.0"
+  }
+}
