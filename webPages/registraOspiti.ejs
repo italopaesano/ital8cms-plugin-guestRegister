@@ -232,18 +232,18 @@
                   { placeholder: 'Comune', linkedProv: 'provinciaNascita' }),
                 fieldText('provinciaNascita', 'Prov', false, 'col-4 col-sm-2',
                   { placeholder: 'PV', maxlength: 2, style: 'text-transform:uppercase' }),
-                fieldAc('statoNascita', 'Stato nascita', 'paesi', 'col-8 col-sm-5',
+                fieldAc('statoNascita', 'Stato nascita', 'stati', 'col-8 col-sm-5',
                   { placeholder: 'Stato' }),
               ])}
 
               ${row([
-                fieldAc('cittadinanza', 'Cittadinanza', 'paesi', 'col-12 col-sm-4',
+                fieldAc('cittadinanza', 'Cittadinanza', 'stati', 'col-12 col-sm-4',
                   { placeholder: 'Nazionalità' }),
                 fieldAc('luogoRilascio', 'Luogo rilascio doc', 'comuni', 'col-12 col-sm-5',
                   { placeholder: 'Comune', linkedProv: 'provinciaRilascio' }),
                 fieldText('provinciaRilascio', 'Prov', false, 'col-4 col-sm-1',
                   { placeholder: 'PV', maxlength: 2, style: 'text-transform:uppercase' }),
-                fieldAc('statoRilascio', 'Stato rilascio doc', 'paesi', 'col-8 col-sm-2',
+                fieldAc('statoRilascio', 'Stato rilascio doc', 'stati', 'col-8 col-sm-2',
                   { placeholder: 'Stato' }),
               ])}
 
@@ -389,9 +389,14 @@
 
       items.forEach(item => {
         const a = document.createElement('a');
-        a.className  = 'dropdown-item py-1 px-2 small';
-        a.href       = '#';
-        a.textContent = item.nome + (item.provincia ? ` (${item.provincia})` : '');
+        a.className = 'dropdown-item py-1 px-2 small';
+        a.href      = '#';
+
+        let label = item.nome;
+        if (item.provincia) label += ` (${item.provincia})`;
+        if (item.cessato)   label += ' — cessato';
+        a.textContent = label;
+        if (item.cessato) a.style.color = '#999';
 
         a.addEventListener('mousedown', (e) => {
           e.preventDefault();
