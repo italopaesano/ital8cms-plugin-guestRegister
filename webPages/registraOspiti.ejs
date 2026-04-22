@@ -417,28 +417,33 @@
 
   // ── OCR: applica risultato al form ──────────────────────────────────────────
 
-  function applyOcrResult(id, result) {
+  async function applyOcrResult(id, result) {
     const { data, warnings, partial } = result;
     const warnedFields = new Set(warnings.map(w => w.split(':')[0].trim()));
-    const allFields = [
-      'cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento',
+    const textFields = [
+      'cognome', 'nome', 'sesso', 'dataNascita', 'numeroDocumento',
       'luogoNascita', 'provinciaNascita', 'statoNascita', 'cittadinanza',
       'luogoRilascio', 'provinciaRilascio', 'statoRilascio',
     ];
 
-    // Popola campi
-    allFields.forEach(f => {
+    // Popola campi di testo
+    textFields.forEach(f => {
       const el = $campo(id, f);
       if (el && data[f] != null) el.value = data[f];
     });
 
-    // Stato validità e icone su tutti i campi
-    allFields.forEach(f => {
-      const el   = $campo(id, f);
-      const icon = $card(id).querySelector(`.field-icon[data-field="${f}"]`);
-      const isReq = REQUIRED.includes(f);
+    // Tipo documento (two-select)
+    if (data.tipoDocumento) await setTipoDoc(id, data.tipoDocumento);
 
-      if (data[f]) {
+    // Icone e stato validità
+    [...textFields, 'tipoDocumento'].forEach(f => {
+      const isDoc = f === 'tipoDocumento';
+      const el    = isDoc ? $card(id).querySelector('.campo-tipodoc-comune') : $campo(id, f);
+      const icon  = $card(id).querySelector(`.field-icon[data-field="${f}"]`);
+      const isReq = REQUIRED.includes(f);
+      const hasVal = isDoc ? !!getTipoDocValue(id) : !!(data[f]);
+
+      if (hasVal) {
         if (el && isReq) { el.classList.add('is-valid'); el.classList.remove('is-invalid'); }
         if (icon) { icon.textContent = '✓'; icon.className = 'field-icon ms-1 text-success small'; }
       } else {
@@ -484,7 +489,7 @@
       const res    = await fetch(`${API_BASE}/scanDocument`, { method: 'POST', body: fd });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Errore OCR');
-      applyOcrResult(id, result);
+      await applyOcrResult(id, result);
     } catch (err) {
       const alertEl = card.querySelector('.ocr-alert');
       alertEl.textContent = `⚠ Errore scansione: ${err.message}`;
