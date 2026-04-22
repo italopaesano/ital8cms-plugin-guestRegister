@@ -1,8 +1,8 @@
 'use strict';
 
-const fs      = require('fs');
-const path    = require('path');
-const multer  = require('multer');
+const fs        = require('fs');
+const path      = require('path');
+const multer    = require('multer');
 const loadJson5 = require('../../core/loadJson5');
 const { process: processDocument } = require('./processors');
 const { generateTxt }              = require('./exporters/questura');
@@ -17,10 +17,9 @@ let myPluginSys = null;
 const upload       = multer({ storage: multer.memoryStorage() });
 const multerSingle = upload.single('document');
 
-// ─── ISTAT data ───────────────────────────────────────────────────────────────
-// comuni.json e paesi.json devono seguire il formato:
-//   comuni: [{ "nome": "ROMA", "provincia": "RM", "codice": "058091000" }, ...]
-//   paesi:  [{ "nome": "ITALIA", "codice": "100000100" }, ...]
+// ─── Dati portale alloggiati (caricati all'avvio) ────────────────────────────
+// Generati da scripts/buildData.js a partire dai CSV ufficiali in
+// data/alloggiatiweb/. Rieseguire lo script se i CSV vengono aggiornati.
 
 function loadJsonFile(filePath) {
   try {
@@ -30,8 +29,10 @@ function loadJsonFile(filePath) {
   }
 }
 
-const comuni = loadJsonFile(path.join(__dirname, 'data/comuni.json'));
-const paesi  = loadJsonFile(path.join(__dirname, 'data/paesi.json'));
+const comuni          = loadJsonFile(path.join(__dirname, 'data/comuni.json'));
+const stati           = loadJsonFile(path.join(__dirname, 'data/stati.json'));
+const documenti       = loadJsonFile(path.join(__dirname, 'data/documenti.json'));
+const tipoAlloggiato  = loadJsonFile(path.join(__dirname, 'data/tipo_alloggiato.json'));
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -40,17 +41,9 @@ async function loadPlugin(pluginSys, pathPluginFolder) {
   pluginConfig = loadJson5(path.join(pathPluginFolder, 'pluginConfig.json5'));
 }
 
-async function installPlugin(pluginSys, pathPluginFolder) {
-  // Il plugin non persiste dati: nessuna installazione richiesta
-}
-
-async function uninstallPlugin(pluginSys, pathPluginFolder) {
-  // Nessuna risorsa da rimuovere
-}
-
-async function upgradePlugin(pluginSys, pathPluginFolder, oldVersion, newVersion) {
-  // Nessuna migrazione dati richiesta
-}
+async function installPlugin(pluginSys, pathPluginFolder) {}
+async function uninstallPlugin(pluginSys, pathPluginFolder) {}
+async function upgradePlugin(pluginSys, pathPluginFolder, oldVersion, newVersion) {}
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
 
@@ -71,9 +64,8 @@ function getRouteArray() {
         }
 
         try {
-          const result = await processDocument(file.buffer);
           ctx.status = 200;
-          ctx.body   = result;
+          ctx.body   = await processDocument(file.buffer);
         } catch (err) {
           ctx.status = 500;
           ctx.body   = { error: err.message };
@@ -81,7 +73,7 @@ function getRouteArray() {
       },
     },
 
-    // Autocomplete comuni italiani
+    // Autocomplete comuni italiani (attivi + cessati)
     {
       method: 'GET',
       path: '/comuni',
@@ -94,16 +86,25 @@ function getRouteArray() {
       },
     },
 
-    // Autocomplete paesi esteri
+    // Autocomplete stati (attivi + cessati)
     {
       method: 'GET',
-      path: '/paesi',
+      path: '/stati',
       handler: async (ctx) => {
         const q = (ctx.query.q || '').toUpperCase().trim();
         if (q.length < 2) { ctx.body = []; return; }
-        ctx.body = paesi
-          .filter(p => p.nome.toUpperCase().startsWith(q))
+        ctx.body = stati
+          .filter(s => s.nome.toUpperCase().startsWith(q))
           .slice(0, 20);
+      },
+    },
+
+    // Lista completa tipi documento (per dropdown "Altro tipo…")
+    {
+      method: 'GET',
+      path: '/documenti',
+      handler: async (ctx) => {
+        ctx.body = documenti;
       },
     },
 
@@ -112,8 +113,7 @@ function getRouteArray() {
       method: 'POST',
       path: '/exportTxt',
       handler: async (ctx) => {
-        const body = ctx.request.body || {};
-        const guests = body.guests;
+        const { guests } = ctx.request.body || {};
 
         if (!Array.isArray(guests) || guests.length === 0) {
           ctx.status = 400;
@@ -122,7 +122,7 @@ function getRouteArray() {
         }
 
         try {
-          const txt = generateTxt(guests, comuni, paesi);
+          const txt = generateTxt(guests, comuni, stati);
           ctx.set('Content-Type', 'text/plain; charset=utf-8');
           ctx.set('Content-Disposition', 'attachment; filename="alloggiati.txt"');
           ctx.body = txt;
@@ -135,7 +135,7 @@ function getRouteArray() {
   ];
 }
 
-// ─── Hook, middleware e condivisione (non utilizzati in questa fase) ──────────
+// ─── Hook, middleware e condivisione ─────────────────────────────────────────
 
 function getHooksPage() {
   return new Map();
@@ -151,8 +151,18 @@ function getObjectToShareToOthersPlugin(forPlugin, pluginSys, pathPluginFolder) 
 
 function setSharedObject(fromPlugin, sharedObject) {}
 
+// Dati esposti alle pagine EJS tramite passData.plugin
 function getObjectToShareToWebPages() {
-  return null;
+  const codiciComuni = (pluginConfig.custom && pluginConfig.custom.documentiComuni) || [];
+  return {
+    // Tipi documento comuni con codice + descrizione (per dropdown EJS)
+    documentiComuni: codiciComuni.map(codice => {
+      const found = documenti.find(d => d.codice === codice);
+      return found || { codice, descrizione: codice };
+    }),
+    // Lista completa per confronto lato server (es. validazione futura)
+    tipoAlloggiato,
+  };
 }
 
 function getGlobalFunctionsForTemplates() {
