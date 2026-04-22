@@ -80,10 +80,11 @@
 
   // ── DOM helpers ──────────────────────────────────────────────────────────────
 
-  function $id(id)       { return document.getElementById(id); }
-  function $card(id)     { return $id(`guest-${id}`); }
-  function $campo(id, f) { return $card(id).querySelector(`.campo[data-field="${f}"]`); }
-  function getVal(id, f) { const el = $campo(id, f); return el ? el.value.trim() : ''; }
+  function $id(id)           { return document.getElementById(id); }
+  function $card(id)         { return $id(`guest-${id}`); }
+  function $campo(id, f)     { return $card(id).querySelector(`.campo[data-field="${f}"]`); }
+  function getVal(id, f)     { const el = $campo(id, f); return el ? el.value.trim() : ''; }
+  function setVal(id, f, v)  { const el = $campo(id, f); if (el) el.value = v || ''; }
 
   // ── Guest card HTML ──────────────────────────────────────────────────────────
 
@@ -431,6 +432,30 @@
       const el = $campo(id, f);
       if (el) el.addEventListener('input', () => updateGuestLabel(id));
     });
+
+    // Capogruppo: propaga soggiorno agli ospiti non modificati manualmente
+    if (isCapogruppo) {
+      ['dataArrivo', 'dataPartenza'].forEach(f => {
+        const el = $campo(id, f);
+        if (el) el.addEventListener('change', () => propagateSoggiorno(f, el.value));
+      });
+    } else {
+      // Ospite: marca come modificato manualmente se l'utente cambia le date
+      ['dataArrivo', 'dataPartenza'].forEach(f => {
+        const el = $campo(id, f);
+        if (el) el.addEventListener('change', () => { el.dataset.userModified = '1'; });
+      });
+    }
+  }
+
+  // ── Propagazione soggiorno dal capogruppo ────────────────────────────────────
+
+  function propagateSoggiorno(field, value) {
+    guests.filter(g => !g.isCapogruppo).forEach(g => {
+      const el = $card(g.id)?.querySelector(`.campo[data-field="${field}"]`);
+      // Propaga solo se l'ospite non ha modificato manualmente il campo
+      if (el && !el.dataset.userModified) el.value = value;
+    });
   }
 
   // ── Add guest ────────────────────────────────────────────────────────────────
@@ -440,6 +465,16 @@
     guests.push(guest);
     $id('listaOspiti').insertAdjacentHTML('beforeend', guestCardHTML(guest));
     setupGuestEvents(guest);
+
+    // Pre-compila soggiorno dal capogruppo
+    if (!isCapogruppo && guests.length > 1) {
+      const capo = guests[0];
+      ['dataArrivo', 'dataPartenza'].forEach(f => {
+        const capoVal = getVal(capo.id, f);
+        if (capoVal) setVal(guest.id, f, capoVal);
+      });
+    }
+
     updateRiepilogoBtn();
   }
 
