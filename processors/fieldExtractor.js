@@ -24,9 +24,9 @@ function extract(text, regex) {
 
 function detectDocumentType(text) {
   const upper = text.toUpperCase();
-  if (upper.includes('PATENTE DI GUIDA'))                              return 'PAT';
-  if (upper.includes('CARTA DI IDENTITA') || upper.includes('IDENTITY CARD')) return 'IDE';
-  if (upper.includes('PASSAPORTO') || upper.includes('PASSPORT'))     return 'PAS';
+  if (upper.includes('PATENTE DI GUIDA'))                                    return 'PATEN';
+  if (upper.includes('CARTA DI IDENTITA') || upper.includes('IDENTITY CARD')) return 'IDENT';
+  if (upper.includes('PASSAPORTO') || upper.includes('PASSPORT'))            return 'PASOR';
   return null;
 }
 
@@ -64,7 +64,7 @@ function extractPatente(text) {
     provinciaNascita,
     statoNascita:      null,   // Non estraibile dalla patente
     cittadinanza:      null,   // Non estraibile dalla patente
-    tipoDocumento:     'PAT',
+    tipoDocumento:     'PATEN',
     numeroDocumento,
     luogoRilascio:     null,   // MIT-UCO non è un comune
     provinciaRilascio: null,
@@ -84,7 +84,7 @@ function extractPatente(text) {
 async function extractFields(rawText) {
   const docType = detectDocumentType(rawText);
 
-  if (docType === 'PAT') return extractPatente(rawText);
+  if (docType === 'PATEN') return extractPatente(rawText);
 
   return {
     data: {

@@ -12,6 +12,16 @@
   },
 
   custom: {
-    // Configurazioni specifiche del processore OCR (da definire nella prossima fase)
+    // Tipi documento mostrati direttamente nel dropdown del form.
+    // Tutti gli altri 90+ tipi restano accessibili tramite "Altro tipo…".
+    // Valori: codici portale alloggiati (vedere data/documenti.json).
+    documentiComuni: [
+      "IDENT",   // Carta d'Identità
+      "IDELE",   // Carta Identità Elettronica
+      "PASOR",   // Passaporto Ordinario
+      "PATEN",   // Patente di Guida
+      "PATNA",   // Patente Nautica
+      "RIFUG",   // Titolo di Viaggio Rifugiato Politico
+    ],
   },
 }

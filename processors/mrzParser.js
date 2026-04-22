@@ -45,14 +45,14 @@ function mrzDateToDisplay(yymmdd) {
   return `${dd}/${mm}/${fullYear}`;
 }
 
-// Codice MRZ documento → codice a 3 lettere portale alloggiati
+// Codice MRZ documento → codice portale alloggiati (5 caratteri)
 function mapDocumentType(raw) {
   if (!raw) return null;
   const t = raw.replace(/</g, '').toUpperCase();
-  if (t.startsWith('P')) return 'PAS';
-  if (t.startsWith('I')) return 'IDE';
-  if (t.startsWith('D')) return 'PAT';
-  return t.substring(0, 3) || null;
+  if (t.startsWith('P')) return 'PASOR';  // Passaporto ordinario
+  if (t.startsWith('I')) return 'IDENT';  // Carta d'identità
+  if (t.startsWith('D')) return 'PATEN';  // Patente (driving licence)
+  return t.substring(0, 5) || null;       // Altri tipi: primi 5 caratteri
 }
 
 // Rimuove i filler '<' e normalizza gli spazi
