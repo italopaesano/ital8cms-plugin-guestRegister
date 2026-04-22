@@ -344,6 +344,65 @@
     }
   }
 
+  // ── Autocomplete ─────────────────────────────────────────────────────────────
+
+  function setupAutocomplete(input) {
+    const endpoint   = input.dataset.endpoint;
+    const linkedProv = input.dataset.linkedProv;
+    const guestId    = input.dataset.id;
+    const dropdown   = input.parentElement.querySelector('.ac-dropdown');
+    let debounce     = null;
+
+    function close() {
+      dropdown.style.display = 'none';
+      dropdown.innerHTML     = '';
+    }
+
+    function open(items) {
+      dropdown.innerHTML = '';
+      if (!items.length) { close(); return; }
+
+      items.forEach(item => {
+        const a = document.createElement('a');
+        a.className  = 'dropdown-item py-1 px-2 small';
+        a.href       = '#';
+        a.textContent = item.nome + (item.provincia ? ` (${item.provincia})` : '');
+
+        a.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          input.value = item.nome;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+
+          // Auto-fill provincia collegata
+          if (linkedProv && item.provincia) {
+            const provEl = $card(guestId).querySelector(`.campo[data-field="${linkedProv}"]`);
+            if (provEl && !provEl.value) provEl.value = item.provincia;
+          }
+          close();
+        });
+        dropdown.appendChild(a);
+      });
+
+      dropdown.style.display = 'block';
+    }
+
+    input.addEventListener('input', () => {
+      clearTimeout(debounce);
+      const q = input.value.trim();
+      if (q.length < 2) { close(); return; }
+      debounce = setTimeout(async () => {
+        try {
+          const res   = await fetch(`${API_BASE}/${endpoint}?q=${encodeURIComponent(q)}`);
+          const items = await res.json();
+          open(items);
+        } catch { close(); }
+      }, 300);
+    });
+
+    input.addEventListener('blur',    () => setTimeout(close, 200));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  }
+
   // ── Event setup ──────────────────────────────────────────────────────────────
 
   function setupGuestEvents(guest) {
@@ -356,6 +415,9 @@
       if (file) scanDocument(guest, file);
       e.target.value = '';
     });
+
+    // Autocomplete inputs
+    card.querySelectorAll('.ac-input').forEach(setupAutocomplete);
 
     if (!isCapogruppo) {
       card.querySelector('.btn-rimuovi').addEventListener('click', () => {
