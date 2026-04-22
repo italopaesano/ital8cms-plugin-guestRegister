@@ -112,6 +112,36 @@
   function getVal(id, f)     { const el = $campo(id, f); return el ? el.value.trim() : ''; }
   function setVal(id, f, v)  { const el = $campo(id, f); if (el) el.value = v || ''; }
 
+  // ── Tipo soggiorno / tipoAlloggiato ─────────────────────────────────────────
+
+  function getMode() {
+    const el = document.querySelector('input[name="tipoSoggiorno"]:checked');
+    return el ? el.value : 'singolo';
+  }
+
+  function getTipoAlloggiato(isCapogruppo) {
+    const mode = getMode();
+    if (mode === 'singolo')  return '16';
+    if (mode === 'famiglia') return isCapogruppo ? '17' : '19';
+    return isCapogruppo ? '18' : '20';
+  }
+
+  function getBadgeText(guest) {
+    const mode = getMode();
+    if (mode === 'singolo') return 'Ospite';
+    if (guest.isCapogruppo) return mode === 'famiglia' ? 'Capofamiglia' : 'Capogruppo';
+    return mode === 'famiglia' ? `Familiare ${guest.num}` : `Membro ${guest.num}`;
+  }
+
+  function updateAllBadges() {
+    guests.forEach(g => {
+      const badge = $card(g.id)?.querySelector('.card-header .badge');
+      if (badge) badge.textContent = getBadgeText(g);
+    });
+    const wrap = $id('wrapAggiungi');
+    if (wrap) wrap.style.display = getMode() === 'singolo' ? 'none' : '';
+  }
+
   // ── Tipo documento: lazy load + two-select ───────────────────────────────────
 
   async function getDocumentiAll() {
@@ -193,7 +223,7 @@
     const { id, isCapogruppo, num } = guest;
 
     const badgeCls  = isCapogruppo ? 'bg-primary' : 'bg-secondary';
-    const badgeText = isCapogruppo ? 'Capogruppo' : `Ospite ${num}`;
+    const badgeText = getBadgeText(guest);
     const removeBtn = isCapogruppo ? '' : `
       <button type="button" class="btn btn-sm btn-outline-danger btn-rimuovi"
               data-id="${id}">✕</button>`;
@@ -387,28 +417,33 @@
 
   // ── OCR: applica risultato al form ──────────────────────────────────────────
 
-  function applyOcrResult(id, result) {
+  async function applyOcrResult(id, result) {
     const { data, warnings, partial } = result;
     const warnedFields = new Set(warnings.map(w => w.split(':')[0].trim()));
-    const allFields = [
-      'cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento',
+    const textFields = [
+      'cognome', 'nome', 'sesso', 'dataNascita', 'numeroDocumento',
       'luogoNascita', 'provinciaNascita', 'statoNascita', 'cittadinanza',
       'luogoRilascio', 'provinciaRilascio', 'statoRilascio',
     ];
 
-    // Popola campi
-    allFields.forEach(f => {
+    // Popola campi di testo
+    textFields.forEach(f => {
       const el = $campo(id, f);
       if (el && data[f] != null) el.value = data[f];
     });
 
-    // Stato validità e icone su tutti i campi
-    allFields.forEach(f => {
-      const el   = $campo(id, f);
-      const icon = $card(id).querySelector(`.field-icon[data-field="${f}"]`);
-      const isReq = REQUIRED.includes(f);
+    // Tipo documento (two-select)
+    if (data.tipoDocumento) await setTipoDoc(id, data.tipoDocumento);
 
-      if (data[f]) {
+    // Icone e stato validità
+    [...textFields, 'tipoDocumento'].forEach(f => {
+      const isDoc = f === 'tipoDocumento';
+      const el    = isDoc ? $card(id).querySelector('.campo-tipodoc-comune') : $campo(id, f);
+      const icon  = $card(id).querySelector(`.field-icon[data-field="${f}"]`);
+      const isReq = REQUIRED.includes(f);
+      const hasVal = isDoc ? !!getTipoDocValue(id) : !!(data[f]);
+
+      if (hasVal) {
         if (el && isReq) { el.classList.add('is-valid'); el.classList.remove('is-invalid'); }
         if (icon) { icon.textContent = '✓'; icon.className = 'field-icon ms-1 text-success small'; }
       } else {
@@ -454,7 +489,7 @@
       const res    = await fetch(`${API_BASE}/scanDocument`, { method: 'POST', body: fd });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Errore OCR');
-      applyOcrResult(id, result);
+      await applyOcrResult(id, result);
     } catch (err) {
       const alertEl = card.querySelector('.ocr-alert');
       alertEl.textContent = `⚠ Errore scansione: ${err.message}`;
@@ -615,7 +650,9 @@
       'luogoRilascio', 'provinciaRilascio', 'statoRilascio',
       'dataArrivo', 'dataPartenza',
     ].reduce((obj, f) => { obj[f] = getVal(id, f) || null; return obj; }, {});
-    data.tipoDocumento = getTipoDocValue(id) || null;
+    data.tipoDocumento  = getTipoDocValue(id) || null;
+    const guest = guests.find(g => g.id === id);
+    data.tipoAlloggiato = getTipoAlloggiato(guest ? guest.isCapogruppo : false);
     return data;
   }
 
@@ -628,7 +665,7 @@
       const badge   = missing.length
         ? `<span class="badge bg-warning text-dark">⚠ Incompleto</span>`
         : `<span class="badge bg-success">✓ Completo</span>`;
-      const label   = g.isCapogruppo ? 'Capogruppo' : `Ospite ${g.num}`;
+      const label   = getBadgeText(g);
 
       return `<tr>
         <td><span class="fw-semibold">${label}</span><br>
@@ -698,6 +735,10 @@
     $id('btnAggiungiOspite').addEventListener('click', () => addGuest(false));
     $id('btnRiepilogo').addEventListener('click', openRiepilogo);
     $id('btnExport').addEventListener('click', exportTxt);
+    document.querySelectorAll('input[name="tipoSoggiorno"]').forEach(r => {
+      r.addEventListener('change', updateAllBadges);
+    });
+    updateAllBadges();
   }
 
   document.addEventListener('DOMContentLoaded', init);
