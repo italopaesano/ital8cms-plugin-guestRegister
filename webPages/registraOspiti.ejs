@@ -23,11 +23,35 @@
     </button>
   </div>
 
+  <!-- Selettore tipo registrazione -->
+  <div class="card mb-4 border-primary">
+    <div class="card-body py-2">
+      <div class="row g-2 align-items-center">
+        <div class="col-auto">
+          <span class="fw-semibold small">Tipo registrazione:</span>
+        </div>
+        <div class="col-auto">
+          <div class="btn-group" role="group">
+            <input type="radio" class="btn-check" name="tipoSoggiorno"
+                   id="ts-singolo" value="singolo" checked>
+            <label class="btn btn-sm btn-outline-primary" for="ts-singolo">Ospite singolo</label>
+            <input type="radio" class="btn-check" name="tipoSoggiorno"
+                   id="ts-famiglia" value="famiglia">
+            <label class="btn btn-sm btn-outline-primary" for="ts-famiglia">Nucleo familiare</label>
+            <input type="radio" class="btn-check" name="tipoSoggiorno"
+                   id="ts-gruppo" value="gruppo">
+            <label class="btn btn-sm btn-outline-primary" for="ts-gruppo">Gruppo</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Lista ospiti (popolata dinamicamente) -->
   <div id="listaOspiti"></div>
 
   <!-- Aggiungi ospite -->
-  <div class="mt-2 mb-5">
+  <div class="mt-2 mb-5" id="wrapAggiungi">
     <button type="button" class="btn btn-outline-secondary" id="btnAggiungiOspite">
       + Aggiungi ospite
     </button>
