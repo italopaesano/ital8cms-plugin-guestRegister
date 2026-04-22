@@ -1,10 +1,11 @@
 'use strict';
 
-const path   = require('path');
-const multer = require('multer');
+const path    = require('path');
+const multer  = require('multer');
 const loadJson5 = require('../../core/loadJson5');
+const { process: processDocument } = require('./processors');
 
-let pluginConfig       = loadJson5(path.join(__dirname, 'pluginConfig.json5'));
+let pluginConfig        = loadJson5(path.join(__dirname, 'pluginConfig.json5'));
 const pluginDescription = loadJson5(path.join(__dirname, 'pluginDescription.json5'));
 const pluginName        = path.basename(__dirname);
 
@@ -13,13 +14,6 @@ let myPluginSys = null;
 // In-memory storage: nessun file scritto su disco (privacy)
 const upload       = multer({ storage: multer.memoryStorage() });
 const multerSingle = upload.single('document');
-
-// ─── OCR processor stub ──────────────────────────────────────────────────────
-// Verrà implementato nella prossima fase con la libreria OCR scelta
-
-async function extractDataFromDocument(fileBuffer, mimetype) {
-  throw new Error('OCR processor not yet implemented');
-}
 
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
@@ -58,8 +52,9 @@ function getRouteArray() {
         }
 
         try {
-          const data = await extractDataFromDocument(file.buffer, file.mimetype);
-          ctx.body = { success: true, data };
+          const result = await processDocument(file.buffer);
+          ctx.status = 200;
+          ctx.body   = result;
         } catch (err) {
           ctx.status = 500;
           ctx.body   = { error: err.message };
