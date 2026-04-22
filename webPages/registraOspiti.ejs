@@ -100,11 +100,15 @@
       return `<div class="row g-2 mb-2">${cols.join('')}</div>`;
     }
 
+    function icon(field) {
+      return `<span class="field-icon ms-1" data-field="${field}"></span>`;
+    }
+
     function fieldText(field, label, required, colClass, opts = {}) {
       const star = required ? ' <span class="text-danger">*</span>' : '';
       return `
         <div class="${colClass}">
-          <label class="form-label small mb-1">${label}${star}</label>
+          <label class="form-label small mb-1">${label}${star} ${icon(field)}</label>
           <input type="${opts.type || 'text'}" class="form-control form-control-sm campo"
             data-id="${id}" data-field="${field}"
             placeholder="${opts.placeholder || ''}"
@@ -118,7 +122,7 @@
       const opts = options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
       return `
         <div class="${colClass}">
-          <label class="form-label small mb-1">${label}${star}</label>
+          <label class="form-label small mb-1">${label}${star} ${icon(field)}</label>
           <select class="form-select form-select-sm campo"
                   data-id="${id}" data-field="${field}">
             <option value="">—</option>${opts}
@@ -129,7 +133,7 @@
     function fieldAc(field, label, endpoint, colClass, opts = {}) {
       return `
         <div class="${colClass}">
-          <label class="form-label small mb-1">${label}</label>
+          <label class="form-label small mb-1">${label} ${icon(field)}</label>
           <div class="position-relative">
             <input type="text" class="form-control form-control-sm campo ac-input"
               data-id="${id}" data-field="${field}" data-endpoint="${endpoint}"
@@ -260,11 +264,98 @@
     if (lbl) lbl.textContent = (c || n) ? `${c} ${n}`.trim() : '—';
   }
 
+  // ── OCR: applica risultato al form ──────────────────────────────────────────
+
+  function applyOcrResult(id, result) {
+    const { data, warnings, partial } = result;
+    const warnedFields = new Set(warnings.map(w => w.split(':')[0].trim()));
+    const allFields = [
+      'cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento',
+      'luogoNascita', 'provinciaNascita', 'statoNascita', 'cittadinanza',
+      'luogoRilascio', 'provinciaRilascio', 'statoRilascio',
+    ];
+
+    // Popola campi
+    allFields.forEach(f => {
+      const el = $campo(id, f);
+      if (el && data[f] != null) el.value = data[f];
+    });
+
+    // Stato validità e icone su tutti i campi
+    allFields.forEach(f => {
+      const el   = $campo(id, f);
+      const icon = $card(id).querySelector(`.field-icon[data-field="${f}"]`);
+      const isReq = REQUIRED.includes(f);
+
+      if (data[f]) {
+        if (el && isReq) { el.classList.add('is-valid'); el.classList.remove('is-invalid'); }
+        if (icon) { icon.textContent = '✓'; icon.className = 'field-icon ms-1 text-success small'; }
+      } else {
+        if (el && isReq) { el.classList.add('is-invalid'); el.classList.remove('is-valid'); }
+        if (icon && warnedFields.has(f)) {
+          icon.textContent = '⚠'; icon.className = 'field-icon ms-1 text-warning small';
+        }
+      }
+    });
+
+    // Banner parziale
+    const alertEl = $card(id).querySelector('.ocr-alert');
+    if (alertEl) alertEl.classList.toggle('d-none', !partial);
+
+    updateGuestLabel(id);
+    updateRiepilogoBtn();
+  }
+
+  // ── OCR: scansione file ──────────────────────────────────────────────────────
+
+  async function scanDocument(guest, file) {
+    const { id } = guest;
+    const card   = $card(id);
+
+    // Preview immediata
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = card.querySelector('.preview-img');
+      const ph  = card.querySelector('.preview-placeholder');
+      img.src = e.target.result;
+      img.classList.remove('d-none');
+      if (ph) ph.classList.add('d-none');
+    };
+    reader.readAsDataURL(file);
+
+    // Spinner on
+    card.querySelector('.scan-status').classList.remove('d-none');
+    card.querySelector('.input-file').disabled = true;
+
+    try {
+      const fd = new FormData();
+      fd.append('document', file);
+      const res    = await fetch(`${API_BASE}/scanDocument`, { method: 'POST', body: fd });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Errore OCR');
+      applyOcrResult(id, result);
+    } catch (err) {
+      const alertEl = card.querySelector('.ocr-alert');
+      alertEl.textContent = `⚠ Errore scansione: ${err.message}`;
+      alertEl.classList.remove('d-none');
+    } finally {
+      card.querySelector('.scan-status').classList.add('d-none');
+      card.querySelector('.input-file').disabled = false;
+    }
+  }
+
   // ── Event setup ──────────────────────────────────────────────────────────────
 
   function setupGuestEvents(guest) {
     const { id, isCapogruppo } = guest;
     const card = $card(id);
+
+    // File input → scansione
+    card.querySelector('.input-file').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) scanDocument(guest, file);
+      e.target.value = '';
+    });
 
     if (!isCapogruppo) {
       card.querySelector('.btn-rimuovi').addEventListener('click', () => {
