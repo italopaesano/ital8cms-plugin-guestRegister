@@ -67,5 +67,239 @@
 
 <%- include(passData.themeSys.getThemePartPath('footer.ejs')) %>
 
+<script>
+(function () {
+  'use strict';
+
+  const API_BASE = '<%= passData.apiPrefix %>/guestRegister';
+  const REQUIRED = ['cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento'];
+
+  let guests   = [];
+  let nextId   = 1;
+  let guestNum = 0;
+
+  // ── DOM helpers ──────────────────────────────────────────────────────────────
+
+  function $id(id)       { return document.getElementById(id); }
+  function $card(id)     { return $id(`guest-${id}`); }
+  function $campo(id, f) { return $card(id).querySelector(`.campo[data-field="${f}"]`); }
+  function getVal(id, f) { const el = $campo(id, f); return el ? el.value.trim() : ''; }
+
+  // ── Guest card HTML ──────────────────────────────────────────────────────────
+
+  function guestCardHTML(guest) {
+    const { id, isCapogruppo, num } = guest;
+
+    const badgeCls  = isCapogruppo ? 'bg-primary' : 'bg-secondary';
+    const badgeText = isCapogruppo ? 'Capogruppo' : `Ospite ${num}`;
+    const removeBtn = isCapogruppo ? '' : `
+      <button type="button" class="btn btn-sm btn-outline-danger btn-rimuovi"
+              data-id="${id}">✕</button>`;
+
+    function row(cols) {
+      return `<div class="row g-2 mb-2">${cols.join('')}</div>`;
+    }
+
+    function fieldText(field, label, required, colClass, opts = {}) {
+      const star = required ? ' <span class="text-danger">*</span>' : '';
+      return `
+        <div class="${colClass}">
+          <label class="form-label small mb-1">${label}${star}</label>
+          <input type="${opts.type || 'text'}" class="form-control form-control-sm campo"
+            data-id="${id}" data-field="${field}"
+            placeholder="${opts.placeholder || ''}"
+            ${opts.maxlength ? `maxlength="${opts.maxlength}"` : ''}
+            ${opts.style    ? `style="${opts.style}"`          : ''}>
+        </div>`;
+    }
+
+    function fieldSelect(field, label, required, colClass, options) {
+      const star = required ? ' <span class="text-danger">*</span>' : '';
+      const opts = options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
+      return `
+        <div class="${colClass}">
+          <label class="form-label small mb-1">${label}${star}</label>
+          <select class="form-select form-select-sm campo"
+                  data-id="${id}" data-field="${field}">
+            <option value="">—</option>${opts}
+          </select>
+        </div>`;
+    }
+
+    function fieldAc(field, label, endpoint, colClass, opts = {}) {
+      return `
+        <div class="${colClass}">
+          <label class="form-label small mb-1">${label}</label>
+          <div class="position-relative">
+            <input type="text" class="form-control form-control-sm campo ac-input"
+              data-id="${id}" data-field="${field}" data-endpoint="${endpoint}"
+              ${opts.linkedProv ? `data-linked-prov="${opts.linkedProv}"` : ''}
+              placeholder="${opts.placeholder || ''}" autocomplete="off">
+            <div class="ac-dropdown dropdown-menu w-100 p-0"></div>
+          </div>
+        </div>`;
+    }
+
+    return `
+      <div class="card mb-3 shadow-sm" id="guest-${id}">
+
+        <div class="card-header py-2 d-flex align-items-center gap-2">
+          <span class="badge ${badgeCls}">${badgeText}</span>
+          <span class="fw-semibold guest-label text-truncate flex-grow-1">—</span>
+          <div class="d-flex align-items-center gap-2 flex-shrink-0">
+            <div class="scan-status d-none">
+              <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+            </div>
+            <label class="btn btn-sm btn-outline-primary mb-0">
+              <input type="file" class="d-none input-file"
+                     accept="image/*" capture="environment">
+              📷 Scansiona
+            </label>
+            ${removeBtn}
+          </div>
+        </div>
+
+        <div class="card-body">
+
+          <div class="alert alert-warning py-2 d-none ocr-alert" role="alert">
+            ⚠ Dati parziali — completare i campi evidenziati prima di esportare.
+          </div>
+
+          <div class="row g-3">
+
+            <!-- Anteprima documento -->
+            <div class="col-md-3 d-flex align-items-start justify-content-center">
+              <div class="border rounded d-flex align-items-center justify-content-center
+                          bg-light w-100 text-center" style="min-height:200px;overflow:hidden">
+                <img class="img-fluid preview-img d-none"
+                     style="max-height:220px;object-fit:contain" alt="Anteprima documento">
+                <small class="text-muted preview-placeholder px-2">
+                  Anteprima<br>documento
+                </small>
+              </div>
+            </div>
+
+            <!-- Campi documento -->
+            <div class="col-md-9">
+
+              ${row([
+                fieldText('cognome', 'Cognome', true, 'col-12 col-sm-6'),
+                fieldText('nome',    'Nome',    true, 'col-12 col-sm-6'),
+              ])}
+
+              ${row([
+                fieldSelect('sesso', 'Sesso', true, 'col-4 col-sm-2',
+                  [['M','M'],['F','F']]),
+                fieldText('dataNascita', 'Data nascita', true, 'col-8 col-sm-4',
+                  { placeholder: 'GG/MM/AAAA' }),
+                fieldSelect('tipoDocumento', 'Tipo doc', true, 'col-6 col-sm-3',
+                  [["IDE","Carta d'Identità"],['PAS','Passaporto'],['PAT','Patente']]),
+                fieldText('numeroDocumento', 'N° documento', true, 'col-6 col-sm-3',
+                  { placeholder: 'Numero' }),
+              ])}
+
+              ${row([
+                fieldAc('luogoNascita', 'Luogo nascita', 'comuni', 'col-12 col-sm-5',
+                  { placeholder: 'Comune', linkedProv: 'provinciaNascita' }),
+                fieldText('provinciaNascita', 'Prov', false, 'col-4 col-sm-2',
+                  { placeholder: 'PV', maxlength: 2, style: 'text-transform:uppercase' }),
+                fieldAc('statoNascita', 'Stato nascita', 'paesi', 'col-8 col-sm-5',
+                  { placeholder: 'Stato' }),
+              ])}
+
+              ${row([
+                fieldAc('cittadinanza', 'Cittadinanza', 'paesi', 'col-12 col-sm-4',
+                  { placeholder: 'Nazionalità' }),
+                fieldAc('luogoRilascio', 'Luogo rilascio doc', 'comuni', 'col-12 col-sm-5',
+                  { placeholder: 'Comune', linkedProv: 'provinciaRilascio' }),
+                fieldText('provinciaRilascio', 'Prov', false, 'col-4 col-sm-1',
+                  { placeholder: 'PV', maxlength: 2, style: 'text-transform:uppercase' }),
+                fieldAc('statoRilascio', 'Stato rilascio doc', 'paesi', 'col-8 col-sm-2',
+                  { placeholder: 'Stato' }),
+              ])}
+
+              <hr class="my-3">
+              <div class="row g-2 align-items-end">
+                <div class="col-auto">
+                  <span class="fw-semibold small">Soggiorno</span>
+                </div>
+                <div class="col-auto">
+                  <label class="form-label small mb-1">Data arrivo</label>
+                  <input type="date" class="form-control form-control-sm campo"
+                         data-id="${id}" data-field="dataArrivo">
+                </div>
+                <div class="col-auto">
+                  <label class="form-label small mb-1">Data partenza</label>
+                  <input type="date" class="form-control form-control-sm campo"
+                         data-id="${id}" data-field="dataPartenza">
+                </div>
+                ${!isCapogruppo ? `
+                <div class="col-auto">
+                  <small class="text-muted fst-italic">
+                    Pre-compilato dal capogruppo. Modifica se diverso.
+                  </small>
+                </div>` : ''}
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  // ── UI helpers ───────────────────────────────────────────────────────────────
+
+  function updateRiepilogoBtn() {
+    $id('btnRiepilogo').disabled = guests.length === 0;
+  }
+
+  function updateGuestLabel(id) {
+    const c   = getVal(id, 'cognome');
+    const n   = getVal(id, 'nome');
+    const lbl = $card(id).querySelector('.guest-label');
+    if (lbl) lbl.textContent = (c || n) ? `${c} ${n}`.trim() : '—';
+  }
+
+  // ── Event setup ──────────────────────────────────────────────────────────────
+
+  function setupGuestEvents(guest) {
+    const { id, isCapogruppo } = guest;
+    const card = $card(id);
+
+    if (!isCapogruppo) {
+      card.querySelector('.btn-rimuovi').addEventListener('click', () => {
+        guests = guests.filter(g => g.id !== id);
+        card.remove();
+        updateRiepilogoBtn();
+      });
+    }
+
+    ['cognome', 'nome'].forEach(f => {
+      const el = $campo(id, f);
+      if (el) el.addEventListener('input', () => updateGuestLabel(id));
+    });
+  }
+
+  // ── Add guest ────────────────────────────────────────────────────────────────
+
+  function addGuest(isCapogruppo = false) {
+    const guest = { id: nextId++, isCapogruppo, num: isCapogruppo ? 0 : ++guestNum };
+    guests.push(guest);
+    $id('listaOspiti').insertAdjacentHTML('beforeend', guestCardHTML(guest));
+    setupGuestEvents(guest);
+    updateRiepilogoBtn();
+  }
+
+  // ── Init ─────────────────────────────────────────────────────────────────────
+
+  function init() {
+    addGuest(true);
+    $id('btnAggiungiOspite').addEventListener('click', () => addGuest(false));
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+
 </body>
 </html>
