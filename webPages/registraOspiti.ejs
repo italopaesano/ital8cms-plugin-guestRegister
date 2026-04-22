@@ -80,10 +80,11 @@
 
   // ── DOM helpers ──────────────────────────────────────────────────────────────
 
-  function $id(id)       { return document.getElementById(id); }
-  function $card(id)     { return $id(`guest-${id}`); }
-  function $campo(id, f) { return $card(id).querySelector(`.campo[data-field="${f}"]`); }
-  function getVal(id, f) { const el = $campo(id, f); return el ? el.value.trim() : ''; }
+  function $id(id)           { return document.getElementById(id); }
+  function $card(id)         { return $id(`guest-${id}`); }
+  function $campo(id, f)     { return $card(id).querySelector(`.campo[data-field="${f}"]`); }
+  function getVal(id, f)     { const el = $campo(id, f); return el ? el.value.trim() : ''; }
+  function setVal(id, f, v)  { const el = $campo(id, f); if (el) el.value = v || ''; }
 
   // ── Guest card HTML ──────────────────────────────────────────────────────────
 
@@ -100,11 +101,15 @@
       return `<div class="row g-2 mb-2">${cols.join('')}</div>`;
     }
 
+    function icon(field) {
+      return `<span class="field-icon ms-1" data-field="${field}"></span>`;
+    }
+
     function fieldText(field, label, required, colClass, opts = {}) {
       const star = required ? ' <span class="text-danger">*</span>' : '';
       return `
         <div class="${colClass}">
-          <label class="form-label small mb-1">${label}${star}</label>
+          <label class="form-label small mb-1">${label}${star} ${icon(field)}</label>
           <input type="${opts.type || 'text'}" class="form-control form-control-sm campo"
             data-id="${id}" data-field="${field}"
             placeholder="${opts.placeholder || ''}"
@@ -118,7 +123,7 @@
       const opts = options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('');
       return `
         <div class="${colClass}">
-          <label class="form-label small mb-1">${label}${star}</label>
+          <label class="form-label small mb-1">${label}${star} ${icon(field)}</label>
           <select class="form-select form-select-sm campo"
                   data-id="${id}" data-field="${field}">
             <option value="">—</option>${opts}
@@ -129,7 +134,7 @@
     function fieldAc(field, label, endpoint, colClass, opts = {}) {
       return `
         <div class="${colClass}">
-          <label class="form-label small mb-1">${label}</label>
+          <label class="form-label small mb-1">${label} ${icon(field)}</label>
           <div class="position-relative">
             <input type="text" class="form-control form-control-sm campo ac-input"
               data-id="${id}" data-field="${field}" data-endpoint="${endpoint}"
@@ -260,11 +265,160 @@
     if (lbl) lbl.textContent = (c || n) ? `${c} ${n}`.trim() : '—';
   }
 
+  // ── OCR: applica risultato al form ──────────────────────────────────────────
+
+  function applyOcrResult(id, result) {
+    const { data, warnings, partial } = result;
+    const warnedFields = new Set(warnings.map(w => w.split(':')[0].trim()));
+    const allFields = [
+      'cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento',
+      'luogoNascita', 'provinciaNascita', 'statoNascita', 'cittadinanza',
+      'luogoRilascio', 'provinciaRilascio', 'statoRilascio',
+    ];
+
+    // Popola campi
+    allFields.forEach(f => {
+      const el = $campo(id, f);
+      if (el && data[f] != null) el.value = data[f];
+    });
+
+    // Stato validità e icone su tutti i campi
+    allFields.forEach(f => {
+      const el   = $campo(id, f);
+      const icon = $card(id).querySelector(`.field-icon[data-field="${f}"]`);
+      const isReq = REQUIRED.includes(f);
+
+      if (data[f]) {
+        if (el && isReq) { el.classList.add('is-valid'); el.classList.remove('is-invalid'); }
+        if (icon) { icon.textContent = '✓'; icon.className = 'field-icon ms-1 text-success small'; }
+      } else {
+        if (el && isReq) { el.classList.add('is-invalid'); el.classList.remove('is-valid'); }
+        if (icon && warnedFields.has(f)) {
+          icon.textContent = '⚠'; icon.className = 'field-icon ms-1 text-warning small';
+        }
+      }
+    });
+
+    // Banner parziale
+    const alertEl = $card(id).querySelector('.ocr-alert');
+    if (alertEl) alertEl.classList.toggle('d-none', !partial);
+
+    updateGuestLabel(id);
+    updateRiepilogoBtn();
+  }
+
+  // ── OCR: scansione file ──────────────────────────────────────────────────────
+
+  async function scanDocument(guest, file) {
+    const { id } = guest;
+    const card   = $card(id);
+
+    // Preview immediata
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = card.querySelector('.preview-img');
+      const ph  = card.querySelector('.preview-placeholder');
+      img.src = e.target.result;
+      img.classList.remove('d-none');
+      if (ph) ph.classList.add('d-none');
+    };
+    reader.readAsDataURL(file);
+
+    // Spinner on
+    card.querySelector('.scan-status').classList.remove('d-none');
+    card.querySelector('.input-file').disabled = true;
+
+    try {
+      const fd = new FormData();
+      fd.append('document', file);
+      const res    = await fetch(`${API_BASE}/scanDocument`, { method: 'POST', body: fd });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Errore OCR');
+      applyOcrResult(id, result);
+    } catch (err) {
+      const alertEl = card.querySelector('.ocr-alert');
+      alertEl.textContent = `⚠ Errore scansione: ${err.message}`;
+      alertEl.classList.remove('d-none');
+    } finally {
+      card.querySelector('.scan-status').classList.add('d-none');
+      card.querySelector('.input-file').disabled = false;
+    }
+  }
+
+  // ── Autocomplete ─────────────────────────────────────────────────────────────
+
+  function setupAutocomplete(input) {
+    const endpoint   = input.dataset.endpoint;
+    const linkedProv = input.dataset.linkedProv;
+    const guestId    = input.dataset.id;
+    const dropdown   = input.parentElement.querySelector('.ac-dropdown');
+    let debounce     = null;
+
+    function close() {
+      dropdown.style.display = 'none';
+      dropdown.innerHTML     = '';
+    }
+
+    function open(items) {
+      dropdown.innerHTML = '';
+      if (!items.length) { close(); return; }
+
+      items.forEach(item => {
+        const a = document.createElement('a');
+        a.className  = 'dropdown-item py-1 px-2 small';
+        a.href       = '#';
+        a.textContent = item.nome + (item.provincia ? ` (${item.provincia})` : '');
+
+        a.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          input.value = item.nome;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+
+          // Auto-fill provincia collegata
+          if (linkedProv && item.provincia) {
+            const provEl = $card(guestId).querySelector(`.campo[data-field="${linkedProv}"]`);
+            if (provEl && !provEl.value) provEl.value = item.provincia;
+          }
+          close();
+        });
+        dropdown.appendChild(a);
+      });
+
+      dropdown.style.display = 'block';
+    }
+
+    input.addEventListener('input', () => {
+      clearTimeout(debounce);
+      const q = input.value.trim();
+      if (q.length < 2) { close(); return; }
+      debounce = setTimeout(async () => {
+        try {
+          const res   = await fetch(`${API_BASE}/${endpoint}?q=${encodeURIComponent(q)}`);
+          const items = await res.json();
+          open(items);
+        } catch { close(); }
+      }, 300);
+    });
+
+    input.addEventListener('blur',    () => setTimeout(close, 200));
+    input.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+  }
+
   // ── Event setup ──────────────────────────────────────────────────────────────
 
   function setupGuestEvents(guest) {
     const { id, isCapogruppo } = guest;
     const card = $card(id);
+
+    // File input → scansione
+    card.querySelector('.input-file').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) scanDocument(guest, file);
+      e.target.value = '';
+    });
+
+    // Autocomplete inputs
+    card.querySelectorAll('.ac-input').forEach(setupAutocomplete);
 
     if (!isCapogruppo) {
       card.querySelector('.btn-rimuovi').addEventListener('click', () => {
@@ -278,6 +432,30 @@
       const el = $campo(id, f);
       if (el) el.addEventListener('input', () => updateGuestLabel(id));
     });
+
+    // Capogruppo: propaga soggiorno agli ospiti non modificati manualmente
+    if (isCapogruppo) {
+      ['dataArrivo', 'dataPartenza'].forEach(f => {
+        const el = $campo(id, f);
+        if (el) el.addEventListener('change', () => propagateSoggiorno(f, el.value));
+      });
+    } else {
+      // Ospite: marca come modificato manualmente se l'utente cambia le date
+      ['dataArrivo', 'dataPartenza'].forEach(f => {
+        const el = $campo(id, f);
+        if (el) el.addEventListener('change', () => { el.dataset.userModified = '1'; });
+      });
+    }
+  }
+
+  // ── Propagazione soggiorno dal capogruppo ────────────────────────────────────
+
+  function propagateSoggiorno(field, value) {
+    guests.filter(g => !g.isCapogruppo).forEach(g => {
+      const el = $card(g.id)?.querySelector(`.campo[data-field="${field}"]`);
+      // Propaga solo se l'ospite non ha modificato manualmente il campo
+      if (el && !el.dataset.userModified) el.value = value;
+    });
   }
 
   // ── Add guest ────────────────────────────────────────────────────────────────
@@ -287,7 +465,100 @@
     guests.push(guest);
     $id('listaOspiti').insertAdjacentHTML('beforeend', guestCardHTML(guest));
     setupGuestEvents(guest);
+
+    // Pre-compila soggiorno dal capogruppo
+    if (!isCapogruppo && guests.length > 1) {
+      const capo = guests[0];
+      ['dataArrivo', 'dataPartenza'].forEach(f => {
+        const capoVal = getVal(capo.id, f);
+        if (capoVal) setVal(guest.id, f, capoVal);
+      });
+    }
+
     updateRiepilogoBtn();
+  }
+
+  // ── Raccoglie i dati del form per un ospite ───────────────────────────────────
+
+  function collectGuest(id) {
+    return [
+      'cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento',
+      'luogoNascita', 'provinciaNascita', 'statoNascita', 'cittadinanza',
+      'luogoRilascio', 'provinciaRilascio', 'statoRilascio',
+      'dataArrivo', 'dataPartenza',
+    ].reduce((obj, f) => { obj[f] = getVal(id, f) || null; return obj; }, {});
+  }
+
+  // ── Riepilogo ─────────────────────────────────────────────────────────────────
+
+  function buildRiepilogoTable() {
+    const rows = guests.map(g => {
+      const d       = collectGuest(g.id);
+      const missing = REQUIRED.filter(f => !d[f]);
+      const badge   = missing.length
+        ? `<span class="badge bg-warning text-dark">⚠ Incompleto</span>`
+        : `<span class="badge bg-success">✓ Completo</span>`;
+      const label   = g.isCapogruppo ? 'Capogruppo' : `Ospite ${g.num}`;
+
+      return `<tr>
+        <td><span class="fw-semibold">${label}</span><br>
+            <small class="text-muted">${d.cognome || '—'} ${d.nome || ''}</small></td>
+        <td>${d.sesso || '—'}</td>
+        <td>${d.dataNascita || '—'}</td>
+        <td>${d.tipoDocumento || '—'}<br><small class="text-muted">${d.numeroDocumento || '—'}</small></td>
+        <td>${d.dataArrivo || '—'}</td>
+        <td>${d.dataPartenza || '—'}</td>
+        <td>${badge}${missing.length ? `<br><small class="text-muted">${missing.join(', ')}</small>` : ''}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="table-responsive">
+      <table class="table table-sm table-bordered table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Ospite</th><th>Sesso</th><th>Nascita</th>
+            <th>Documento</th><th>Arrivo</th><th>Partenza</th><th>Stato</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  function openRiepilogo() {
+    $id('riepilogoBody').innerHTML = buildRiepilogoTable();
+    new bootstrap.Modal($id('modalRiepilogo')).show();
+  }
+
+  // ── Export .txt ───────────────────────────────────────────────────────────────
+
+  async function exportTxt() {
+    const btn       = $id('btnExport');
+    const origLabel = btn.textContent;
+    btn.disabled    = true;
+    btn.textContent = 'Generazione...';
+
+    try {
+      const res = await fetch(`${API_BASE}/exportTxt`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ guests: guests.map(g => collectGuest(g.id)) }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Errore export'); }
+
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = Object.assign(document.createElement('a'), { href: url, download: 'alloggiati.txt' });
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Errore: ${err.message}`);
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = origLabel;
+    }
   }
 
   // ── Init ─────────────────────────────────────────────────────────────────────
@@ -295,6 +566,8 @@
   function init() {
     addGuest(true);
     $id('btnAggiungiOspite').addEventListener('click', () => addGuest(false));
+    $id('btnRiepilogo').addEventListener('click', openRiepilogo);
+    $id('btnExport').addEventListener('click', exportTxt);
   }
 
   document.addEventListener('DOMContentLoaded', init);
