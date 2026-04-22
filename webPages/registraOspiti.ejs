@@ -478,11 +478,96 @@
     updateRiepilogoBtn();
   }
 
+  // ── Raccoglie i dati del form per un ospite ───────────────────────────────────
+
+  function collectGuest(id) {
+    return [
+      'cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento',
+      'luogoNascita', 'provinciaNascita', 'statoNascita', 'cittadinanza',
+      'luogoRilascio', 'provinciaRilascio', 'statoRilascio',
+      'dataArrivo', 'dataPartenza',
+    ].reduce((obj, f) => { obj[f] = getVal(id, f) || null; return obj; }, {});
+  }
+
+  // ── Riepilogo ─────────────────────────────────────────────────────────────────
+
+  function buildRiepilogoTable() {
+    const rows = guests.map(g => {
+      const d       = collectGuest(g.id);
+      const missing = REQUIRED.filter(f => !d[f]);
+      const badge   = missing.length
+        ? `<span class="badge bg-warning text-dark">⚠ Incompleto</span>`
+        : `<span class="badge bg-success">✓ Completo</span>`;
+      const label   = g.isCapogruppo ? 'Capogruppo' : `Ospite ${g.num}`;
+
+      return `<tr>
+        <td><span class="fw-semibold">${label}</span><br>
+            <small class="text-muted">${d.cognome || '—'} ${d.nome || ''}</small></td>
+        <td>${d.sesso || '—'}</td>
+        <td>${d.dataNascita || '—'}</td>
+        <td>${d.tipoDocumento || '—'}<br><small class="text-muted">${d.numeroDocumento || '—'}</small></td>
+        <td>${d.dataArrivo || '—'}</td>
+        <td>${d.dataPartenza || '—'}</td>
+        <td>${badge}${missing.length ? `<br><small class="text-muted">${missing.join(', ')}</small>` : ''}</td>
+      </tr>`;
+    }).join('');
+
+    return `<div class="table-responsive">
+      <table class="table table-sm table-bordered table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Ospite</th><th>Sesso</th><th>Nascita</th>
+            <th>Documento</th><th>Arrivo</th><th>Partenza</th><th>Stato</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+
+  function openRiepilogo() {
+    $id('riepilogoBody').innerHTML = buildRiepilogoTable();
+    new bootstrap.Modal($id('modalRiepilogo')).show();
+  }
+
+  // ── Export .txt ───────────────────────────────────────────────────────────────
+
+  async function exportTxt() {
+    const btn       = $id('btnExport');
+    const origLabel = btn.textContent;
+    btn.disabled    = true;
+    btn.textContent = 'Generazione...';
+
+    try {
+      const res = await fetch(`${API_BASE}/exportTxt`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ guests: guests.map(g => collectGuest(g.id)) }),
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Errore export'); }
+
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = Object.assign(document.createElement('a'), { href: url, download: 'alloggiati.txt' });
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert(`Errore: ${err.message}`);
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = origLabel;
+    }
+  }
+
   // ── Init ─────────────────────────────────────────────────────────────────────
 
   function init() {
     addGuest(true);
     $id('btnAggiungiOspite').addEventListener('click', () => addGuest(false));
+    $id('btnRiepilogo').addEventListener('click', openRiepilogo);
+    $id('btnExport').addEventListener('click', exportTxt);
   }
 
   document.addEventListener('DOMContentLoaded', init);
