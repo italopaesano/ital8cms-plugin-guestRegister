@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<%- include(passData.themeSys.getThemePartPath('head.ejs')) %>
+<%- passData.themeSys.injectPluginCss() %>
+<%- passData.themeSys.injectPluginJs() %>
+<title>Registra Ospiti</title>
+</head>
+
+<body class="plugin-page plugin-guestRegister page-registraOspiti">
+
+<%- include(passData.themeSys.getThemePartPath('header.ejs')) %>
+
+<%- passData.themeSys.injectPluginHtmlBefore() %>
+
+<main class="container py-4">
+
+  <!-- Toolbar -->
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Registra Ospiti</h1>
+    <button type="button" class="btn btn-success" id="btnRiepilogo" disabled>
+      Riepilogo ed export
+    </button>
+  </div>
+
+  <!-- Lista ospiti (popolata dinamicamente) -->
+  <div id="listaOspiti"></div>
+
+  <!-- Aggiungi ospite -->
+  <div class="mt-2 mb-5">
+    <button type="button" class="btn btn-outline-secondary" id="btnAggiungiOspite">
+      + Aggiungi ospite
+    </button>
+  </div>
+
+  <!-- Modal: Riepilogo e export -->
+  <div class="modal fade" id="modalRiepilogo" tabindex="-1"
+       aria-labelledby="modalRiepilogoLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+
+        <div class="modal-header">
+          <h5 class="modal-title" id="modalRiepilogoLabel">Riepilogo Ospiti</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"
+                  aria-label="Chiudi"></button>
+        </div>
+
+        <div class="modal-body" id="riepilogoBody">
+          <!-- Tabella generata dinamicamente -->
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary"
+                  data-bs-dismiss="modal">Chiudi</button>
+          <button type="button" class="btn btn-success" id="btnExport">
+            Scarica .txt
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<%- passData.themeSys.injectPluginHtmlAfter() %>
+
+<%- include(passData.themeSys.getThemePartPath('footer.ejs')) %>
+
+</body>
+</html>
