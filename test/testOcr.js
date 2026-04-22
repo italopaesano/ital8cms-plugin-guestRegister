@@ -4,20 +4,21 @@
 // Non richiede il CMS in esecuzione.
 //
 // Uso:
-//   node test/testOcr.js <percorso-immagine>
+//   node test/testOcr.js <percorso-immagine> [--debug]
 //
-// Esempio:
-//   node test/testOcr.js ./test/samples/carta_identita.jpg
+// --debug: mostra il testo grezzo estratto da Tesseract
 
 const fs   = require('fs');
 const path = require('path');
 
 const { process: processDocument } = require('../processors');
 
-const imagePath = process.argv[2];
+const args      = process.argv.slice(2);
+const debug     = args.includes('--debug');
+const imagePath = args.find(a => !a.startsWith('--'));
 
 if (!imagePath) {
-  console.error('Uso: node test/testOcr.js <percorso-immagine>');
+  console.error('Uso: node test/testOcr.js <percorso-immagine> [--debug]');
   process.exit(1);
 }
 
@@ -32,13 +33,19 @@ const buffer = fs.readFileSync(absPath);
 console.log(`\nElaborazione: ${path.basename(absPath)}`);
 console.log('─'.repeat(50));
 
-processDocument(buffer)
+processDocument(buffer, { debug })
   .then((result) => {
-    // Risultato grezzo
-    console.log('\nRisultato JSON:\n');
-    console.log(JSON.stringify(result, null, 2));
+    if (debug && result._rawText) {
+      console.log('\nTESTO GREZZO OCR (Tesseract):');
+      console.log('─'.repeat(50));
+      console.log(result._rawText);
+      console.log('─'.repeat(50));
+    }
 
-    // Riepilogo leggibile
+    const { _rawText, ...printable } = result;
+    console.log('\nRisultato JSON:\n');
+    console.log(JSON.stringify(printable, null, 2));
+
     console.log('\n' + '─'.repeat(50));
     console.log(`Processor usato : ${result.processor}`);
     console.log(`Risultato       : ${result.partial ? 'PARZIALE' : 'COMPLETO'}`);
@@ -58,6 +65,6 @@ processDocument(buffer)
   })
   .catch((err) => {
     console.error('\nErrore durante l\'elaborazione:', err.message);
-    if (process.env.DEBUG) console.error(err.stack);
+    if (debug) console.error(err.stack);
     process.exit(1);
   });

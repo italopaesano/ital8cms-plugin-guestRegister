@@ -20,7 +20,7 @@ function computePartial(data) {
 //   2. Ricerca righe MRZ nel testo → parsing strutturato
 //   3. Se MRZ non trovata o non valida → fallback estrazione testuale
 
-async function process(buffer) {
+async function process(buffer, { debug = false } = {}) {
   const rawText = await ocrImage(buffer);
 
   // Tentativo MRZ
@@ -34,6 +34,7 @@ async function process(buffer) {
         processor: 'mrz',
         data:      mrzResult.data,
         warnings:  mrzResult.warnings,
+        ...(debug && { _rawText: rawText }),
       };
     }
   }
@@ -46,6 +47,7 @@ async function process(buffer) {
     processor: 'tesseract',
     data:      textResult.data,
     warnings:  textResult.warnings,
+    ...(debug && { _rawText: rawText }),
   };
 }
 
