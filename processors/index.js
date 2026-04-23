@@ -26,7 +26,7 @@ async function process(buffer, { debug = false } = {}) {
   // Tentativo MRZ
   const mrzLines = findMrzLines(rawText);
   if (mrzLines) {
-    const mrzResult = extractMrzData(mrzLines);
+    const mrzResult = await extractMrzData(mrzLines);
     if (mrzResult) {
       return {
         success:   true,
