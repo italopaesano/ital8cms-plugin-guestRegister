@@ -9,6 +9,7 @@
   nodeModuleDependency: {
     "tesseract.js": "^7.0.0",  // OCR immagini documento
     mrz:            "^5.0.0",  // parsing righe MRZ (ESM-only; caricato con dynamic import())
+    multer:         "^2.0.0",  // upload multipart in-memory (scansione documento)
   },
 
   custom: {
