@@ -1,6 +1,14 @@
 'use strict';
 
-const { parse: parseMrz } = require('mrz');
+// mrz@5 è ESM-only: si carica con dynamic import() anche da file CJS
+let _parseMrz = null;
+async function getParseMrz() {
+  if (!_parseMrz) {
+    const { parse } = await import('mrz');
+    _parseMrz = parse;
+  }
+  return _parseMrz;
+}
 
 // Formati MRZ supportati (righe × caratteri per riga)
 const MRZ_FORMATS = [
@@ -71,7 +79,8 @@ function mapSex(val) {
 
 // ─── Parsing principale ───────────────────────────────────────────────────────
 
-function extractMrzData(mrzLines) {
+async function extractMrzData(mrzLines) {
+  const parseMrz = await getParseMrz();
   let parsed;
   try {
     parsed = parseMrz(mrzLines, { autocorrect: true });
