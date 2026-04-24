@@ -7,15 +7,36 @@ const loadJson5 = require('../../core/loadJson5');
 const { process: processDocument } = require('./processors');
 const { generateTxt }              = require('./exporters/questura');
 
+// let: pluginConfig viene ricaricato in loadPlugin() dal path ufficiale del core
 let pluginConfig        = loadJson5(path.join(__dirname, 'pluginConfig.json5'));
 const pluginDescription = loadJson5(path.join(__dirname, 'pluginDescription.json5'));
-const pluginName        = path.basename(__dirname);
+
+// Nota: il core (pluginSys.js) imposta plugin.pluginName = nome cartella dopo il
+// require del modulo, quindi non serve dichiararlo qui. La cartella di install
+// deve chiamarsi "guestRegister" per coerenza con pluginDescription.name e con
+// l'API_BASE usato nella pagina EJS.
 
 let myPluginSys = null;
 
 // In-memory storage: nessun file scritto su disco (privacy)
 const upload       = multer({ storage: multer.memoryStorage() });
 const multerSingle = upload.single('document');
+
+// ─── Access control ──────────────────────────────────────────────────────────
+// Ruoli abilitati ad operare sul plugin: root (0), admin (1) e ruolo custom
+// 'host' creato in installPlugin() (id dinamico >= 100, salvato in
+// pluginConfig.custom.hostRoleId). Se adminUsers non è installato o la
+// creazione fallisce, hostRoleId resta undefined e solo root/admin accedono.
+function allowedRoles() {
+  const roles     = [0, 1];
+  const hostRoleId = pluginConfig.custom && pluginConfig.custom.hostRoleId;
+  if (typeof hostRoleId === 'number') roles.push(hostRoleId);
+  return roles;
+}
+
+function accessHost() {
+  return { requiresAuth: true, allowedRoles: allowedRoles() };
+}
 
 // ─── Dati portale alloggiati (caricati all'avvio) ────────────────────────────
 // Generati da scripts/buildData.js a partire dai CSV ufficiali in
@@ -41,7 +62,49 @@ async function loadPlugin(pluginSys, pathPluginFolder) {
   pluginConfig = loadJson5(path.join(pathPluginFolder, 'pluginConfig.json5'));
 }
 
-async function installPlugin(pluginSys, pathPluginFolder) {}
+// Crea (se non esiste) il ruolo custom 'host' tramite il plugin adminUsers e
+// salva il roleId in pluginConfig.custom.hostRoleId per l'uso in getRouteArray.
+// Soft dependency: se adminUsers non è disponibile, il plugin funziona comunque
+// ma le rotte restano accessibili solo a root e admin.
+async function installPlugin(pluginSys, pathPluginFolder) {
+  let roleManagement;
+  try {
+    roleManagement = require('../adminUsers/roleManagement');
+  } catch {
+    console.warn('[guestRegister] adminUsers non disponibile: ruolo "host" non creato, accesso limitato a root/admin.');
+    return;
+  }
+
+  // Idempotente: se il ruolo 'host' esiste già (es. reinstall) ne riuso l'id.
+  const existing = roleManagement
+    .getCustomRoles()
+    .find(r => r.name.toLowerCase() === 'host');
+
+  let hostRoleId;
+  if (existing) {
+    hostRoleId = existing.id;
+  } else {
+    const res = roleManagement.createCustomRole(
+      'host',
+      'Gestore di una struttura ricettiva — accede al plugin guestRegister per registrare gli ospiti.',
+    );
+    if (res.error) {
+      console.warn(`[guestRegister] Creazione ruolo "host" fallita: ${res.error}`);
+      return;
+    }
+    hostRoleId = res.roleId;
+  }
+
+  // Persiste il roleId in pluginConfig.custom. JSON.stringify perde i commenti
+  // JSON5 (coerente con il comportamento del core su userRole.json5).
+  if (!pluginConfig.custom) pluginConfig.custom = {};
+  pluginConfig.custom.hostRoleId = hostRoleId;
+  fs.writeFileSync(
+    path.join(pathPluginFolder, 'pluginConfig.json5'),
+    JSON.stringify(pluginConfig, null, 2),
+  );
+}
+
 async function uninstallPlugin(pluginSys, pathPluginFolder) {}
 async function upgradePlugin(pluginSys, pathPluginFolder, oldVersion, newVersion) {}
 
@@ -53,6 +116,7 @@ function getRouteArray() {
     {
       method: 'POST',
       path: '/scanDocument',
+      access: accessHost(),
       handler: async (ctx) => {
         await multerSingle(ctx, async () => {});
 
@@ -77,6 +141,7 @@ function getRouteArray() {
     {
       method: 'GET',
       path: '/comuni',
+      access: accessHost(),
       handler: async (ctx) => {
         const q = (ctx.query.q || '').toUpperCase().trim();
         if (q.length < 2) { ctx.body = []; return; }
@@ -90,6 +155,7 @@ function getRouteArray() {
     {
       method: 'GET',
       path: '/stati',
+      access: accessHost(),
       handler: async (ctx) => {
         const q = (ctx.query.q || '').toUpperCase().trim();
         if (q.length < 2) { ctx.body = []; return; }
@@ -103,6 +169,7 @@ function getRouteArray() {
     {
       method: 'GET',
       path: '/documenti',
+      access: accessHost(),
       handler: async (ctx) => {
         ctx.body = documenti;
       },
@@ -112,6 +179,7 @@ function getRouteArray() {
     {
       method: 'POST',
       path: '/exportTxt',
+      access: accessHost(),
       handler: async (ctx) => {
         const { guests } = ctx.request.body || {};
 
@@ -183,6 +251,5 @@ module.exports = {
   setSharedObject,
   getObjectToShareToWebPages,
   getGlobalFunctionsForTemplates,
-  pluginName,
   pluginConfig,
 };
