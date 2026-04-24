@@ -1,13 +1,14 @@
 {
   "name": "ital8cms-plugin-guestregister",
   "version": "0.1.0",
-  "description": "Plugin ital8cms per estrazione dati da documenti di identità degli ospiti",
+  "description": "Plugin ital8cms per registrazione ospiti e generazione file portale alloggiati",
   "private": true,
   "scripts": {
     "test:ocr": "node test/testOcr.js"
   },
   "dependencies": {
-    "mrz": "^4.0.0",
-    "tesseract.js": "^5.0.0"
+    "multer":       "^2.0.0",
+    "tesseract.js": "^7.0.0",
+    "mrz":          "^5.0.0"
   }
 }
