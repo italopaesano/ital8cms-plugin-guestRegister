@@ -18,9 +18,30 @@ const pluginDescription = loadJson5(path.join(__dirname, 'pluginDescription.json
 
 let myPluginSys = null;
 
-// In-memory storage: nessun file scritto su disco (privacy)
-const upload       = multer({ storage: multer.memoryStorage() });
+// In-memory storage: nessun file scritto su disco (privacy).
+// Limiti: 10 MB per file, un solo file per richiesta.
+// fileFilter: accetta solo immagini (image/*); OCR su altri formati sarebbe inutile.
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const upload        = multer({
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: MAX_FILE_SIZE, files: 1 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype && file.mimetype.startsWith('image/')) return cb(null, true);
+    // Errore segnalato al chiamante: va distinto dagli altri per tornare 400
+    const err  = new Error(`Tipo file non supportato: ${file.mimetype || 'sconosciuto'}. Sono accettate solo immagini.`);
+    err.code   = 'INVALID_MIME';
+    cb(err);
+  },
+});
 const multerSingle = upload.single('document');
+
+// multer è basato su callback: wrappo in Promise per poter intercettare gli
+// errori di limits/fileFilter e tradurli in 400 nel route handler.
+function parseUpload(ctx) {
+  return new Promise((resolve, reject) => {
+    multerSingle(ctx, (err) => err ? reject(err) : resolve());
+  });
+}
 
 // ─── Access control ──────────────────────────────────────────────────────────
 // Ruoli abilitati ad operare sul plugin: root (0), admin (1) e ruolo custom
@@ -118,7 +139,20 @@ function getRouteArray() {
       path: '/scanDocument',
       access: accessHost(),
       handler: async (ctx) => {
-        await multerSingle(ctx, async () => {});
+        // Parsing upload: errori di limits/mimetype → 400 con messaggio dedicato
+        try {
+          await parseUpload(ctx);
+        } catch (err) {
+          ctx.status = 400;
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            ctx.body = { error: `File troppo grande. Dimensione massima: ${MAX_FILE_SIZE / (1024 * 1024)} MB.` };
+          } else if (err.code === 'INVALID_MIME') {
+            ctx.body = { error: err.message };
+          } else {
+            ctx.body = { error: 'Upload non valido.' };
+          }
+          return;
+        }
 
         const file = ctx.request.file;
         if (!file) {
