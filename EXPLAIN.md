@@ -63,7 +63,7 @@ Al primo avvio, se `pluginConfig.isInstalled` è `0`, il core invoca
 
 | Pacchetto      | Versione | Uso |
 |----------------|----------|-----|
-| `multer`       | `^2.0.0` | Upload multipart in-memory (endpoint `/scanDocument`) |
+| `multer`       | `^2.0.0` | Upload multipart in-memory (endpoint `/scan-document`) |
 | `tesseract.js` | `^7.0.0` | OCR immagini documento |
 | `mrz`          | `^5.0.0` | Parsing righe MRZ (TD1/TD2/TD3). ESM-only, caricato con `dynamic import()` |
 
@@ -126,13 +126,13 @@ Tutte richiedono autenticazione e sono riservate ai ruoli `root` (0), `admin`
 
 | Metodo | Path             | Descrizione |
 |--------|------------------|-------------|
-| POST   | `/scanDocument`  | Riceve un'immagine (`multipart/form-data`, campo `document`), esegue OCR + parsing MRZ / fallback testuale, restituisce JSON con i dati estratti e un array di `warnings` per i campi da completare manualmente |
+| POST   | `/scan-document` | Riceve un'immagine (`multipart/form-data`, campo `document`), esegue OCR + parsing MRZ / fallback testuale, restituisce JSON con i dati estratti e un array di `warnings` per i campi da completare manualmente |
 | GET    | `/comuni?q=XXX`  | Autocomplete comuni italiani (attivi + cessati); richiede almeno 2 caratteri |
 | GET    | `/stati?q=XXX`   | Autocomplete stati esteri (attivi + cessati); richiede almeno 2 caratteri |
 | GET    | `/documenti`     | Restituisce la lista completa dei tipi documento (per dropdown "Altro tipo…") |
-| POST   | `/exportTxt`     | Riceve `{ guests: [...] }`, genera il file `.txt` fixed-width (175 caratteri/riga) per il portale alloggiati e lo restituisce come download |
+| POST   | `/export-txt`    | Riceve `{ guests: [...] }`, genera il file `.txt` fixed-width (175 caratteri/riga) per il portale alloggiati e lo restituisce come download |
 
-### Limiti upload `/scanDocument`
+### Limiti upload `/scan-document`
 
 - Dimensione massima file: **10 MB**
 - Tipi file accettati: **qualsiasi immagine** (MIME `image/*`)
@@ -140,7 +140,7 @@ Tutte richiedono autenticazione e sono riservate ai ruoli `root` (0), `admin`
   - `LIMIT_FILE_SIZE` → "File troppo grande. Dimensione massima: 10 MB."
   - `INVALID_MIME` → "Tipo file non supportato: \<mime\>. Sono accettate solo immagini."
 
-### Esempio risposta `/scanDocument`
+### Esempio risposta `/scan-document`
 
 ```json
 {
@@ -172,6 +172,19 @@ Tutte richiedono autenticazione e sono riservate ai ruoli `root` (0), `admin`
 `partial: true` quando uno dei campi obbligatori (`cognome`, `nome`, `sesso`,
 `dataNascita`, `tipoDocumento`, `numeroDocumento`) non è stato estratto.
 
+### Worker Tesseract
+
+Il worker Tesseract viene creato in modalità lazy al primo OCR e poi riusato
+per tutte le richieste successive. Lingue caricate: `ita+eng` (per documenti
+italiani e passaporti stranieri).
+
++++ ATTENZIONE +++
+La **prima** chiamata a `/scan-document` scarica i modelli linguistici
+(~15 MB) e può richiedere diversi secondi; le chiamate successive operano
+direttamente sul worker già pronto. Tesseract.js serializza internamente le
+`recognize()` sullo stesso worker: due richieste contemporanee vengono
+processate in sequenza, non in parallelo.
+
 ---
 
 ## 4. Pagina EJS
@@ -190,11 +203,11 @@ La pagina (`webPages/registraOspiti.ejs`):
   flag `isCapogruppo` (16/17/18/19/20).
 - Per ogni ospite consente la scansione documento (input file con
   `capture="environment"` → fotocamera su mobile), mostra un'anteprima
-  immediata, invoca `/scanDocument` e applica i dati estratti.
+  immediata, invoca `/scan-document` e applica i dati estratti.
 - Autocomplete per comuni, stati e cittadinanza.
 - Due-select per il tipo documento: i tipi comuni nel primo dropdown, tutti
   gli altri accessibili tramite "Altro tipo…" (lazy-load di `/documenti`).
-- Modal di riepilogo che valida i campi obbligatori e, tramite `/exportTxt`,
+- Modal di riepilogo che valida i campi obbligatori e, tramite `/export-txt`,
   scarica il file `.txt` per il portale alloggiati.
 
 ### Dati passati dal plugin

@@ -486,7 +486,7 @@
     try {
       const fd = new FormData();
       fd.append('document', file);
-      const res    = await fetch(`${API_BASE}/scanDocument`, { method: 'POST', body: fd });
+      const res    = await fetch(`${API_BASE}/scan-document`, { method: 'POST', body: fd });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || 'Errore OCR');
       await applyOcrResult(id, result);
@@ -706,7 +706,7 @@
     btn.textContent = 'Generazione...';
 
     try {
-      const res = await fetch(`${API_BASE}/exportTxt`, {
+      const res = await fetch(`${API_BASE}/export-txt`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ guests: guests.map(g => collectGuest(g.id)) }),

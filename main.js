@@ -136,7 +136,7 @@ function getRouteArray() {
     // OCR: riceve immagine documento, restituisce dati estratti
     {
       method: 'POST',
-      path: '/scanDocument',
+      path: '/scan-document',
       access: accessHost(),
       handler: async (ctx) => {
         // Parsing upload: errori di limits/mimetype → 400 con messaggio dedicato
@@ -165,8 +165,10 @@ function getRouteArray() {
           ctx.status = 200;
           ctx.body   = await processDocument(file.buffer);
         } catch (err) {
+          // err.message può contenere dettagli interni di Tesseract/MRZ
+          console.error('[guestRegister] Errore OCR:', err);
           ctx.status = 500;
-          ctx.body   = { error: err.message };
+          ctx.body   = { error: 'Errore durante l\'elaborazione del documento.' };
         }
       },
     },
@@ -212,7 +214,7 @@ function getRouteArray() {
     // Genera file .txt per portale alloggiati (download)
     {
       method: 'POST',
-      path: '/exportTxt',
+      path: '/export-txt',
       access: accessHost(),
       handler: async (ctx) => {
         const { guests } = ctx.request.body || {};
@@ -229,8 +231,9 @@ function getRouteArray() {
           ctx.set('Content-Disposition', 'attachment; filename="alloggiati.txt"');
           ctx.body = txt;
         } catch (err) {
+          console.error('[guestRegister] Errore export:', err);
           ctx.status = 500;
-          ctx.body   = { error: err.message };
+          ctx.body   = { error: 'Errore durante la generazione del file di export.' };
         }
       },
     },

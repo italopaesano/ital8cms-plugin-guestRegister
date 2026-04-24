@@ -70,7 +70,7 @@ Roadmap verso la prima versione stabile del plugin `guestRegister`.
 ## 6. Ruolo host e access control
 
 - [ ] Definire il ruolo `host` nel sistema ital8cms
-- [ ] Aggiungere il campo `access` alla route `/scanDocument` per limitarla al ruolo `host`
+- [ ] Aggiungere il campo `access` alla route `/scan-document` per limitarla al ruolo `host`
 - [ ] Gestire la creazione del ruolo durante `installPlugin()`
 
 ## 7. Test e validazione
