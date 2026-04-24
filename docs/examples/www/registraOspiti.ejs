@@ -1,0 +1,65 @@
+<%
+/**
+ * ESEMPIO — pagina di accesso al plugin guestRegister
+ * ─────────────────────────────────────────────────────
+ * Copia questo file in:  <ital8cms-root>/www/
+ *
+ * URL risultante (senza globalPrefix):
+ *   http://localhost:3000/registraOspiti
+ *
+ * URL risultante (con globalPrefix = "gestione"):
+ *   http://localhost:3000/gestione/registraOspiti
+ *
+ * Il plugin deve essere attivo (active: 1) e installato
+ * (isInstalled: 1) in pluginConfig.json5.
+ *
+ * REDIRECT AUTOMATICO
+ * Se preferisci che questa pagina reindirizzi direttamente
+ * all'interfaccia del plugin senza mostrare nulla,
+ * decommentare le due righe seguenti e cancellare
+ * il resto del file:
+ *
+ *   ctx.redirect(passData.globalPrefix + '/guestRegister/registraOspiti');
+ *   return;
+ */
+%>
+<!DOCTYPE html>
+<html lang="it">
+
+<%- include(passData.themeSys.getThemePartPath('head.ejs')) %>
+<title>Registrazione Ospiti</title>
+</head>
+
+<body>
+
+<%- include(passData.themeSys.getThemePartPath('header.ejs')) %>
+
+<main class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-md-6 text-center">
+
+      <div class="mb-4">
+        <span style="font-size:3rem">🏨</span>
+      </div>
+
+      <h1 class="h3 mb-3">Registrazione Ospiti</h1>
+
+      <p class="text-muted mb-4">
+        Avvia la procedura di registrazione degli ospiti:<br>
+        scansione documenti, completamento dati e generazione<br>
+        del file <code>.txt</code> per il portale alloggiati.
+      </p>
+
+      <a href="<%= passData.globalPrefix %>/guestRegister/registraOspiti"
+         class="btn btn-primary btn-lg px-5">
+        Apri modulo registrazione
+      </a>
+
+    </div>
+  </div>
+</main>
+
+<%- include(passData.themeSys.getThemePartPath('footer.ejs')) %>
+
+</body>
+</html>
