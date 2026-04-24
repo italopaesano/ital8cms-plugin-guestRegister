@@ -96,7 +96,7 @@
   'use strict';
 
   const API_BASE         = '<%= passData.apiPrefix %>/guestRegister';
-  const DOCUMENTI_COMUNI = <%- JSON.stringify(passData.plugin.documentiComuni) %>;
+  const DOCUMENTI_COMUNI = <%- JSON.stringify(passData.plugin.guestRegister.documentiComuni) %>;
   const REQUIRED         = ['cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento'];
 
   let guests       = [];
