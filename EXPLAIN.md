@@ -341,6 +341,8 @@ guestRegister/
 
 ## 9. Known issue upstream — `apiPrefix`
 
+> **Repo upstream**: <https://github.com/italopaesano/ital8cms>
+
 Il valore `passData.apiPrefix` esposto dal core di ital8cms alle pagine EJS può
 arrivare **con o senza `/` iniziale** (es. `api` invece di `/api`), a seconda
 della versione del core. Senza `/` iniziale, una stringa come
@@ -385,7 +387,8 @@ reverse proxy) e mostra un errore leggibile con HTTP status e snippet del body.
 
 ### Fix upstream raccomandato
 
-Nel core di ital8cms (`core/pluginSys.js` o equivalente), normalizzare
-`apiPrefix` **una volta sola** quando viene esposto in `passData`, garantendo
-che inizi sempre con `/` (e non termini con `/`). In alternativa, documentare
-esplicitamente il contratto e aggiornare tutti i plugin esistenti.
+Nel core di ital8cms ([italopaesano/ital8cms](https://github.com/italopaesano/ital8cms),
+`core/pluginSys.js` o equivalente), normalizzare `apiPrefix` **una volta sola**
+quando viene esposto in `passData`, garantendo che inizi sempre con `/` (e non
+termini con `/`). In alternativa, documentare esplicitamente il contratto e
+aggiornare tutti i plugin esistenti.
