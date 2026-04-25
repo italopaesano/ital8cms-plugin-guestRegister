@@ -149,7 +149,23 @@ function getRouteArray() {
           } else if (err.code === 'INVALID_MIME') {
             ctx.body = { error: err.message };
           } else {
-            ctx.body = { error: 'Upload non valido.' };
+            // Errore multer non classificato. Logghiamo i dettagli lato server
+            // ed esponiamo solo `code` nella risposta per diagnosticare dal
+            // Network tab del browser senza far trapelare stack/interni.
+            // Code tipici da indagare:
+            //  - LIMIT_UNEXPECTED_FILE  → nome campo diverso da "document"
+            //  - "Multipart: Boundary not found" / body undefined
+            //    → body già consumato da un body parser globale del core
+            //      (vedi EXPLAIN.md sezione 9 e nota upstream).
+            console.error('[guestRegister] Errore upload multer:', {
+              code:    err.code,
+              message: err.message,
+              field:   err.field,
+            });
+            ctx.body = {
+              error: 'Upload non valido.',
+              code:  err.code || 'UNKNOWN',
+            };
           }
           return;
         }
