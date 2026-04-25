@@ -6,6 +6,11 @@
 
   dependency: {},      // dipendenze da altri plugin ital8cms (da definire)
 
+  // Manifest delle deps npm del plugin: installato dal core ital8cms al
+  // caricamento del plugin. L'utente CMS non deve lanciare `npm install`.
+  // Queste versioni devono restare allineate a mano con `package.json →
+  // dependencies` (usato solo per gli script standalone in test/ e scripts/).
+  // Vedi EXPLAIN.md §1.c per il razionale della duplicazione e il rischio drift.
   nodeModuleDependency: {
     "tesseract.js": "^7.0.0",  // OCR immagini documento
     mrz:            "^5.0.0",  // parsing righe MRZ (ESM-only; caricato con dynamic import())

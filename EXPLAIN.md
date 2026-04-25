@@ -32,19 +32,28 @@ Se la cartella viene nominata diversamente (es. `ital8cms-plugin-guestRegister`
 come nel repository git), le chiamate dall'EJS non troveranno gli endpoint e il
 dropdown "Tipo documento" resterà vuoto.
 
+Esistono **due flussi di installazione distinti**: quello dell'utente che
+installa il plugin dentro un'istanza ital8cms in produzione, e quello del
+developer che vuole far girare i test/script standalone fuori dal CMS.
+
+### 1.a Flusso utente CMS (produzione)
+
+L'utente del CMS **non** deve lanciare `npm install` nella cartella del plugin:
+delle dipendenze npm si occupa il core ital8cms.
+
 Passi:
 
 ```
 cd plugins/
 git clone https://github.com/italopaesano/ital8cms-plugin-guestRegister.git guestRegister
-cd guestRegister
-npm install
 ```
 
-`npm install` scarica le dipendenze native (`multer`, `tesseract.js`, `mrz`)
-dichiarate in `pluginConfig.json5 → nodeModuleDependency`.
+Al caricamento del plugin, il core ital8cms legge
+`pluginConfig.json5 → nodeModuleDependency` e provvede a installare i pacchetti
+elencati (`multer`, `tesseract.js`, `mrz`). Questo è il meccanismo standard
+di ital8cms per le dipendenze npm dei plugin.
 
-Al primo avvio, se `pluginConfig.isInstalled` è `0`, il core invoca
+Al primo avvio, se `pluginConfig.isInstalled` è `0`, il core invoca anche
 `installPlugin()` che:
 
 - Richiede (soft) il modulo `adminUsers/roleManagement` del plugin omonimo.
@@ -52,6 +61,41 @@ Al primo avvio, se `pluginConfig.isInstalled` è `0`, il core invoca
   `roleId` in `pluginConfig.custom.hostRoleId`.
 - Se `adminUsers` non è installato, il plugin continua a funzionare ma l'accesso
   alle rotte resta limitato ai soli `root` (0) e `admin` (1).
+
+### 1.b Flusso developer (test/script standalone)
+
+Solo se vuoi far girare la pipeline OCR fuori dal CMS (vedi §7) o eseguire
+`scripts/buildData.js` (vedi §5) come processo Node a sé stante, ti serve un
+`node_modules` locale dentro la cartella del plugin:
+
+```
+cd plugins/guestRegister
+npm install
+```
+
+In questo caso `npm` legge `package.json → dependencies` e popola
+`./node_modules`, in modo che `node test/testOcr.js …` o
+`node scripts/buildData.js` possano risolvere i moduli senza passare dal CMS.
+**Questo passo non serve** in produzione e non va eseguito sull'istanza CMS.
+
+### 1.c Perché esistono due elenchi di dipendenze npm?
+
+Le tre dipendenze native (`multer`, `tesseract.js`, `mrz`) sono dichiarate
+**due volte**, ed è voluto:
+
+| File                                    | Letto da              | A cosa serve |
+|-----------------------------------------|-----------------------|--------------|
+| `pluginConfig.json5 → nodeModuleDependency` | core ital8cms     | Manifest delle deps del plugin nel CMS. Il core le installa al caricamento del plugin. |
+| `package.json → dependencies`           | `npm` / `node`        | Permette agli script standalone (`test/testOcr.js`, `scripts/buildData.js`) di risolvere i moduli con un `npm install` locale, senza dover avviare il CMS. |
+
+⚠️ **Rischio di drift**: i due elenchi sono mantenuti **a mano**, non c'è
+sincronizzazione automatica. Se aggiorni una versione in
+`pluginConfig.json5 → nodeModuleDependency`, devi aggiornare la stessa
+versione in `package.json → dependencies` (e viceversa). Una divergenza può
+generare bug subdoli e difficili da diagnosticare: il plugin gira
+correttamente nel CMS ma i test/script standalone falliscono o producono
+risultati diversi (o l'opposto). Prima di un release controllare sempre che
+le tre versioni di `multer`, `tesseract.js`, `mrz` coincidano fra i due file.
 
 ### Dipendenze plugin
 
@@ -278,7 +322,8 @@ plugin continua a funzionare ma solo root/admin possono accedervi.
 
 ## 7. Test OCR standalone
 
-Per testare la pipeline OCR senza avviare il CMS:
+Per testare la pipeline OCR senza avviare il CMS (flusso developer, vedi
+§1.b — l'utente CMS non deve eseguire questo `npm install`):
 
 ```
 npm install
