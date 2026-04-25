@@ -95,9 +95,37 @@
 (function () {
   'use strict';
 
-  const API_BASE         = '<%= passData.apiPrefix %>/guestRegister';
+  // passData.apiPrefix dal core ital8cms può arrivare con o senza '/' iniziale.
+  // Senza '/' fetch() risolverebbe le chiamate come URL relative alla pagina
+  // corrente (es. /pluginPages/guestRegister/...) e tutti gli endpoint
+  // tornerebbero 404 con HTML, facendo esplodere res.json() lato client.
+  // Vedi EXPLAIN.md → "Known issue upstream — apiPrefix".
+  <%
+    const _apiPrefix = passData.apiPrefix.startsWith('/')
+      ? passData.apiPrefix
+      : '/' + passData.apiPrefix;
+  %>
+  const API_BASE         = '<%= _apiPrefix %>/guestRegister';
   const DOCUMENTI_COMUNI = <%- JSON.stringify(passData.plugin.guestRegister.documentiComuni) %>;
   const REQUIRED         = ['cognome', 'nome', 'sesso', 'dataNascita', 'tipoDocumento', 'numeroDocumento'];
+
+  // ── Fetch helper: protegge da risposte non-JSON (404 HTML, redirect login, …) ─
+  // Il server può rispondere con HTML in scenari che bypassano il route handler
+  // del plugin (404 del core, middleware di auth con redirect, error page del
+  // reverse proxy). In quei casi res.json() esplode con un messaggio criptico
+  // ("JSON.parse: unexpected character at line 1 column 1"). Qui controlliamo
+  // il Content-Type prima di parsare e, se non è JSON, lanciamo un errore con
+  // status code + snippet del body così l'utente vede subito cos'è andato storto.
+  async function parseJsonResponse(res, errorPrefix) {
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      return res.json();
+    }
+    const text    = await res.text().catch(() => '');
+    const snippet = text.slice(0, 120).replace(/\s+/g, ' ').trim();
+    const detail  = snippet ? ` — ${snippet}` : '';
+    throw new Error(`${errorPrefix}: risposta non-JSON (HTTP ${res.status} ${res.statusText})${detail}`);
+  }
 
   let guests       = [];
   let nextId       = 1;
@@ -487,7 +515,7 @@
       const fd = new FormData();
       fd.append('document', file);
       const res    = await fetch(`${API_BASE}/scan-document`, { method: 'POST', body: fd });
-      const result = await res.json();
+      const result = await parseJsonResponse(res, 'Errore scansione');
       if (!res.ok) throw new Error(result.error || 'Errore OCR');
       await applyOcrResult(id, result);
     } catch (err) {
@@ -711,7 +739,10 @@
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ guests: guests.map(g => collectGuest(g.id)) }),
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Errore export'); }
+      if (!res.ok) {
+        const e = await parseJsonResponse(res, 'Errore export');
+        throw new Error(e.error || 'Errore export');
+      }
 
       const blob = await res.blob();
       const url  = URL.createObjectURL(blob);

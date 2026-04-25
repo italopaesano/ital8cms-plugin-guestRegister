@@ -18,6 +18,7 @@ alloggiati (Turismo5 / Questura).
 6. [Privacy e access control](#6-privacy-e-access-control)
 7. [Test OCR standalone](#7-test-ocr-standalone)
 8. [Struttura del codice](#8-struttura-del-codice)
+9. [Known issue upstream — `apiPrefix`](#9-known-issue-upstream--apiprefix)
 
 ---
 
@@ -335,3 +336,59 @@ guestRegister/
 4. `getHooksPage()`, `getMiddlewareToAdd()`, `getObjectToShareToWebPages()`.
 5. `loadPlugin(pluginSys, pathPluginFolder)` — ricarica `pluginConfig` con
    il path canonico e memorizza il riferimento a `pluginSys`.
+
+---
+
+## 9. Known issue upstream — `apiPrefix`
+
+> **Repo upstream**: <https://github.com/italopaesano/ital8cms>
+
+Il valore `passData.apiPrefix` esposto dal core di ital8cms alle pagine EJS può
+arrivare **con o senza `/` iniziale** (es. `api` invece di `/api`), a seconda
+della versione del core. Senza `/` iniziale, una stringa come
+`'<%= passData.apiPrefix %>/guestRegister'` viene interpretata da `fetch()`
+come **URL relativa** rispetto alla pagina corrente, producendo URL del tipo:
+
+```
+http://localhost:3000/pluginPages/guestRegister/api/guestRegister/scan-document
+                       └── path della pagina ──┘  └── relative path ──┘
+```
+
+invece di quello corretto:
+
+```
+http://localhost:3000/api/guestRegister/scan-document
+```
+
+Tutte le rotte tornano quindi `404` con HTML, e lato client `await res.json()`
+esplode con il messaggio (Firefox):
+
+```
+JSON.parse: unexpected character at line 1 column 1 of the JSON data
+```
+
+### Workaround applicato
+
+In `webPages/registraOspiti.ejs` `apiPrefix` viene normalizzato a render-time
+forzando il leading `/`:
+
+```ejs
+<%
+  const _apiPrefix = passData.apiPrefix.startsWith('/')
+    ? passData.apiPrefix
+    : '/' + passData.apiPrefix;
+%>
+const API_BASE = '<%= _apiPrefix %>/guestRegister';
+```
+
+In aggiunta, lato client le chiamate `fetch()` passano per `parseJsonResponse()`
+che intercetta risposte non-JSON (404 HTML, redirect login, error page del
+reverse proxy) e mostra un errore leggibile con HTTP status e snippet del body.
+
+### Fix upstream raccomandato
+
+Nel core di ital8cms ([italopaesano/ital8cms](https://github.com/italopaesano/ital8cms),
+`core/pluginSys.js` o equivalente), normalizzare `apiPrefix` **una volta sola**
+quando viene esposto in `passData`, garantendo che inizi sempre con `/` (e non
+termini con `/`). In alternativa, documentare esplicitamente il contratto e
+aggiornare tutti i plugin esistenti.
