@@ -4,14 +4,19 @@
  * ─────────────────────────────────────────────────────
  * Copia questo file in:  <ital8cms-root>/www/
  *
- * URL risultante (senza globalPrefix):
+ * URL di QUESTA pagina (senza globalPrefix):
  *   http://localhost:3000/registraOspiti
  *
- * URL risultante (con globalPrefix = "gestione"):
+ * URL di QUESTA pagina (con globalPrefix = "gestione"):
  *   http://localhost:3000/gestione/registraOspiti
  *
+ * URL della pagina del PLUGIN a cui si redirige sotto
+ * (default pluginPagesPrefix = "pluginPages"):
+ *   http://localhost:3000/pluginPages/guestRegister/registraOspiti.ejs
+ *
  * Il plugin deve essere attivo (active: 1) e installato
- * (isInstalled: 1) in pluginConfig.json5.
+ * (isInstalled: 1) in pluginConfig.json5, e la cartella
+ * di install dentro plugins/ deve chiamarsi "guestRegister".
  *
  * REDIRECT AUTOMATICO
  * Se preferisci che questa pagina reindirizzi direttamente
@@ -19,8 +24,11 @@
  * decommentare le due righe seguenti e cancellare
  * il resto del file:
  *
- *   ctx.redirect(passData.globalPrefix + '/guestRegister/registraOspiti');
+ *   ctx.redirect(passData.globalPrefix + '/pluginPages/guestRegister/registraOspiti.ejs');
  *   return;
+ *
+ * Se hai personalizzato pluginPagesPrefix in ital8Config.json5,
+ * sostituisci "pluginPages" qui sopra e nell'<a href> con il tuo valore.
  */
 %>
 <!DOCTYPE html>
@@ -50,7 +58,7 @@
         del file <code>.txt</code> per il portale alloggiati.
       </p>
 
-      <a href="<%= passData.globalPrefix %>/guestRegister/registraOspiti"
+      <a href="<%= passData.globalPrefix %>/pluginPages/guestRegister/registraOspiti.ejs"
          class="btn btn-primary btn-lg px-5">
         Apri modulo registrazione
       </a>
