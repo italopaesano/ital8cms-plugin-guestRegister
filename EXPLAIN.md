@@ -65,7 +65,7 @@ Al primo avvio, se `pluginConfig.isInstalled` è `0`, il core invoca
 
 | Pacchetto      | Versione | Uso |
 |----------------|----------|-----|
-| `@koa/multer`  | `^3.0.2` | Upload multipart in-memory (endpoint `/scan-document`). Binding Koa ufficiale di `multer` (NON usare il pacchetto `multer` direttamente: la sua API è Express-only e in Koa funziona solo dietro wrapper artigianali, fragili) |
+| `@koa/multer`  | `^4.0.0` | Upload multipart in-memory (endpoint `/scan-document`). Binding Koa ufficiale di `multer` (NON usare il pacchetto `multer` direttamente: la sua API è Express-only e in Koa funziona solo dietro wrapper artigianali, fragili) |
 | `tesseract.js` | `^7.0.0` | OCR immagini documento |
 | `mrz`          | `^5.0.0` | Parsing righe MRZ (TD1/TD2/TD3). ESM-only, caricato con `dynamic import()` |
 
@@ -86,7 +86,7 @@ Al primo avvio, se `pluginConfig.isInstalled` è `0`, il core invoca
   nodeModuleDependency: {
     "tesseract.js": "^7.0.0",
     mrz:            "^5.0.0",
-    "@koa/multer":  "^3.0.2",
+    "@koa/multer":  "^4.0.0",
   },
 
   custom: {
