@@ -2,7 +2,7 @@
 
 const fs        = require('fs');
 const path      = require('path');
-const multer    = require('multer');
+const koaMulter = require('@koa/multer');
 const loadJson5 = require('../../core/loadJson5');
 const { process: processDocument } = require('./processors');
 const { generateTxt }              = require('./exporters/questura');
@@ -22,8 +22,8 @@ let myPluginSys = null;
 // Limiti: 10 MB per file, un solo file per richiesta.
 // fileFilter: accetta solo immagini (image/*); OCR su altri formati sarebbe inutile.
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const upload        = multer({
-  storage: multer.memoryStorage(),
+const upload        = koaMulter({
+  storage: koaMulter.memoryStorage(),
   limits:  { fileSize: MAX_FILE_SIZE, files: 1 },
   fileFilter: (req, file, cb) => {
     if (file.mimetype && file.mimetype.startsWith('image/')) return cb(null, true);
@@ -33,14 +33,17 @@ const upload        = multer({
     cb(err);
   },
 });
-const multerSingle = upload.single('document');
 
-// multer è basato su callback: wrappo in Promise per poter intercettare gli
-// errori di limits/fileFilter e tradurli in 400 nel route handler.
+// @koa/multer è il binding Koa ufficiale: `upload.single('document')` restituisce
+// direttamente un middleware Koa `(ctx, next) => Promise`. Lo invochiamo passando
+// un `next` no-op così l'await termina al completamento del parsing, senza
+// proseguire la catena dei middleware (la handler successiva ne ha già il
+// controllo). Eventuali errori (limits, fileFilter, body esaurito) vengono
+// rigettati dalla Promise e gestiti nel try/catch del route handler.
+const uploadSingle = upload.single('document');
+
 function parseUpload(ctx) {
-  return new Promise((resolve, reject) => {
-    multerSingle(ctx, (err) => err ? reject(err) : resolve());
-  });
+  return uploadSingle(ctx, async () => {});
 }
 
 // ─── Access control ──────────────────────────────────────────────────────────
@@ -139,6 +142,29 @@ function getRouteArray() {
       path: '/scan-document',
       access: accessHost(),
       handler: async (ctx) => {
+        // Trip-wire body-parser-aware: se un middleware globale del core ha
+        // già parsato il multipart, @koa/multer riceverebbe uno stream
+        // esaurito e fallirebbe con un errore opaco. Inoltre i limiti/
+        // fileFilter di @koa/multer non sarebbero applicati, quindi non
+        // possiamo "fidarci" del body pre-parsato. Meglio fallire fast con
+        // codice diagnostico.
+        // Vedi EXPLAIN.md sezione 10 → "Body parser e middleware ordering —
+        // requisiti upstream".
+        const contentType = (ctx.get('content-type') || '').toLowerCase();
+        const isMultipart = contentType.startsWith('multipart/form-data');
+        const preParsed   = ctx.request.body
+          && typeof ctx.request.body === 'object'
+          && Object.keys(ctx.request.body).length > 0;
+        if (isMultipart && preParsed) {
+          console.error('[guestRegister] BODY_PRECONSUMED su /scan-document — body multipart già parsato a monte. Verificare middleware ordering nel core di ital8cms.');
+          ctx.status = 500;
+          ctx.body   = {
+            error: 'Body multipart già parsato da un middleware del core. Configurare il body parser globale per non gestire multipart, oppure escludere questa rotta. Vedi EXPLAIN.md sezione 10.',
+            code:  'BODY_PRECONSUMED',
+          };
+          return;
+        }
+
         // Parsing upload: errori di limits/mimetype → 400 con messaggio dedicato
         try {
           await parseUpload(ctx);
@@ -149,15 +175,16 @@ function getRouteArray() {
           } else if (err.code === 'INVALID_MIME') {
             ctx.body = { error: err.message };
           } else {
-            // Errore multer non classificato. Logghiamo i dettagli lato server
-            // ed esponiamo solo `code` nella risposta per diagnosticare dal
-            // Network tab del browser senza far trapelare stack/interni.
+            // Errore @koa/multer non classificato. Logghiamo i dettagli lato
+            // server ed esponiamo solo `code` nella risposta per diagnosticare
+            // dal Network tab del browser senza far trapelare stack/interni.
             // Code tipici da indagare:
-            //  - LIMIT_UNEXPECTED_FILE  → nome campo diverso da "document"
-            //  - "Multipart: Boundary not found" / body undefined
-            //    → body già consumato da un body parser globale del core
-            //      (vedi EXPLAIN.md sezione 9 e nota upstream).
-            console.error('[guestRegister] Errore upload multer:', {
+            //  - LIMIT_UNEXPECTED_FILE → nome campo diverso da "document"
+            //  - "Multipart: Boundary not found" → boundary non valido
+            //  - errore generico senza code → spesso indica stream del body
+            //    già consumato (vedi anche il trip-wire BODY_PRECONSUMED sopra
+            //    e la sezione 9 di EXPLAIN.md).
+            console.error('[guestRegister] Errore upload @koa/multer:', {
               code:    err.code,
               message: err.message,
               field:   err.field,
