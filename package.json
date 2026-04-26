@@ -7,7 +7,7 @@
     "test:ocr": "node test/testOcr.js"
   },
   "dependencies": {
-    "multer":       "^2.0.0",
+    "@koa/multer":  "^3.0.2",
     "tesseract.js": "^7.0.0",
     "mrz":          "^5.0.0"
   }

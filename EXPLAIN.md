@@ -19,6 +19,7 @@ alloggiati (Turismo5 / Questura).
 7. [Test OCR standalone](#7-test-ocr-standalone)
 8. [Struttura del codice](#8-struttura-del-codice)
 9. [Known issue upstream — `apiPrefix`](#9-known-issue-upstream--apiprefix)
+10. [Body parser e middleware ordering — requisiti upstream](#10-body-parser-e-middleware-ordering--requisiti-upstream)
 
 ---
 
@@ -42,7 +43,7 @@ cd guestRegister
 npm install
 ```
 
-`npm install` scarica le dipendenze native (`multer`, `tesseract.js`, `mrz`)
+`npm install` scarica le dipendenze native (`@koa/multer`, `tesseract.js`, `mrz`)
 dichiarate in `pluginConfig.json5 → nodeModuleDependency`.
 
 Al primo avvio, se `pluginConfig.isInstalled` è `0`, il core invoca
@@ -64,7 +65,7 @@ Al primo avvio, se `pluginConfig.isInstalled` è `0`, il core invoca
 
 | Pacchetto      | Versione | Uso |
 |----------------|----------|-----|
-| `multer`       | `^2.0.0` | Upload multipart in-memory (endpoint `/scan-document`) |
+| `@koa/multer`  | `^3.0.2` | Upload multipart in-memory (endpoint `/scan-document`). Binding Koa ufficiale di `multer` (NON usare il pacchetto `multer` direttamente: la sua API è Express-only e in Koa funziona solo dietro wrapper artigianali, fragili) |
 | `tesseract.js` | `^7.0.0` | OCR immagini documento |
 | `mrz`          | `^5.0.0` | Parsing righe MRZ (TD1/TD2/TD3). ESM-only, caricato con `dynamic import()` |
 
@@ -85,7 +86,7 @@ Al primo avvio, se `pluginConfig.isInstalled` è `0`, il core invoca
   nodeModuleDependency: {
     "tesseract.js": "^7.0.0",
     mrz:            "^5.0.0",
-    multer:         "^2.0.0",
+    "@koa/multer":  "^3.0.2",
   },
 
   custom: {
@@ -260,7 +261,7 @@ dalla sezione "Scarica tabelle" del portale.
 ## 6. Privacy e access control
 
 **Privacy**: il plugin non scrive mai su disco i file delle immagini o i dati
-estratti. L'upload avviene in `multer.memoryStorage()`, l'OCR lavora sul
+estratti. L'upload avviene in `@koa/multer` con `memoryStorage()`, l'OCR lavora sul
 buffer in RAM e il file `.txt` viene generato on-the-fly e restituito come
 risposta senza essere mai persistito. L'unica persistenza lato server è il
 `pluginConfig.custom.hostRoleId` (identificativo numerico, non contiene dati
@@ -392,3 +393,66 @@ Nel core di ital8cms ([italopaesano/ital8cms](https://github.com/italopaesano/it
 quando viene esposto in `passData`, garantendo che inizi sempre con `/` (e non
 termini con `/`). In alternativa, documentare esplicitamente il contratto e
 aggiornare tutti i plugin esistenti.
+
+---
+
+## 10. Body parser e middleware ordering — requisiti upstream
+
+> **Repo upstream**: <https://github.com/italopaesano/ital8cms>
+
+In Koa, lo stream del body di una request può essere letto **una sola volta**.
+Se un middleware globale del core consuma il body multipart prima che il
+plugin invochi `@koa/multer`, multer trova lo stream esaurito e fallisce con
+errori non classificati (codice `undefined` o "Boundary not found"). Il
+risultato per l'utente: `400 Upload non valido.` senza ulteriori dettagli.
+
+### Trip-wire applicata nel plugin
+
+L'endpoint `/scan-document` controlla, prima di passare il body a `@koa/multer`,
+se `Content-Type: multipart/form-data` e `ctx.request.body` risulta già
+popolato. In quel caso risponde con:
+
+```json
+{
+  "error": "Body multipart già parsato da un middleware del core. … Vedi EXPLAIN.md sezione 10.",
+  "code":  "BODY_PRECONSUMED"
+}
+```
+
+e logga `[guestRegister] BODY_PRECONSUMED su /scan-document — …`. È una guard
+di diagnostica: quando scatta, il fix non sta nel plugin ma nel core.
+
+### Migrazione a `@koa/multer`
+
+Il plugin **non** dipende più dal pacchetto `multer` (Express-only). Usa
+`@koa/multer`, il binding ufficiale per Koa. La handler invoca direttamente il
+middleware `(ctx, next) => Promise` ritornato da `upload.single('document')`,
+senza più wrapper artigianali. Questo elimina una classe intera di errori
+borderline dovuti al passaggio scorretto di `ctx` a multer Express-style.
+
+### Requisiti che il core deve garantire
+
+1. **Body parser globale safe per multipart**. Opzioni in ordine di
+   preferenza:
+   - **(a) Best**: usare `@koa/bodyparser` (o `koa-bodyparser`), che NON
+     parsa multipart — i plugin che gestiscono upload usano `@koa/multer`
+     per-route. Zero conflitti, separation of concerns netta.
+   - **(b) OK**: se il core ha bisogno di `koa-body` per altri motivi,
+     configurarlo con `multipart: false` esplicito e demandare il multipart
+     ai plugin.
+   - **(c) Workaround**: se serve retrocompatibilità, esporre dal core
+     un'API tipo `pluginSys.skipBodyParser(routePath)` che il plugin chiama
+     per dichiarare i suoi route di upload; il middleware globale consulta la
+     lista e lascia passare quei path senza parsarli.
+2. **Middleware ordering deterministico**:
+   ```
+   [body parser globale] → [router del core] → [handler plugin (con eventuale @koa/multer per-route)]
+   ```
+   Nessun middleware "dietro le quinte" deve toccare `ctx.req` tra il body
+   parser e la handler. I middleware dei plugin esposti via
+   `getMiddlewareToAdd()` vanno mantati **dopo** il body parser globale ma
+   **prima** del router, con priorità documentata.
+3. **Test di non-regressione lato core**: una rotta finta che riceve
+   `multipart/form-data` con un file binario ≥ 1 MB e verifica che
+   `ctx.req` sia ancora leggibile dal plugin. Se lo è, il middleware
+   ordering è sano.
