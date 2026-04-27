@@ -6,35 +6,20 @@ const { createWorker } = require('tesseract.js');
 
 // ─── Path locali (zero downloads runtime) ───────────────────────────────────
 //
-// tesseract.js, di default, scarica modelli linguistici e moduli WASM da CDN
-// esterni (tessdata.projectnaptha.com, unpkg.com). In ambienti senza accesso
-// a quei domini (sandbox, container con whitelist) il primo OCR resta in
-// attesa indefinita. Qui pre-bundliamo:
-//   - i .traineddata in processors/tesseract-data/ (variante "fast")
-//   - worker.min.js e tesseract-core* dai node_modules locali
-// e li passiamo esplicitamente a createWorker così non viene mai contattato
-// alcun CDN.
+// tesseract.js, di default, scarica i modelli linguistici da CDN esterno
+// (tessdata.projectnaptha.com). In ambienti senza accesso a quel dominio
+// (sandbox, container con whitelist) il primo OCR resta in attesa
+// indefinita. Pre-bundliamo i .traineddata in processors/tesseract-data/
+// (variante "fast") e passiamo langPath esplicito a createWorker.
+//
+// NB: workerPath e corePath NON vengono passati. In Node tesseract.js usa
+// di default il proprio worker-script/node/index.js (passare il file
+// dist/worker.min.js, che è la build per browser, causa errori del tipo
+// "addEventListener is not a function"). Il core WASM viene caricato dai
+// require() diretti in worker-script/node/getCore.js, che risolvono
+// tesseract.js-core via npm — non passa da corePath.
 
 const TESSDATA_DIR = path.join(__dirname, 'tesseract-data');
-
-// Risolti lazy una sola volta. require.resolve usa la stessa logica di require,
-// quindi rispetta gli npm hoist e funziona sia con npm install locale al
-// plugin sia con i moduli al root del CMS.
-let _workerPath, _corePath;
-function getWorkerPath() {
-  if (!_workerPath) {
-    _workerPath = require.resolve('tesseract.js/dist/worker.min.js');
-  }
-  return _workerPath;
-}
-function getCorePath() {
-  if (!_corePath) {
-    // tesseract.js v7 vuole la directory contenente i tesseract-core*.{js,wasm}.
-    const wasmJs = require.resolve('tesseract.js-core/tesseract-core.wasm.js');
-    _corePath = path.dirname(wasmJs);
-  }
-  return _corePath;
-}
 
 // ─── Lingue OCR ─────────────────────────────────────────────────────────────
 //
@@ -93,16 +78,22 @@ function preflightCheck(langs) {
 
 let _workerPromise = null;
 
+// OEM (OCR Engine Mode): 3 = LSTM + Legacy combined (default Tesseract).
+// Necessario quando le lingue includono osd, perché osd.traineddata della
+// variante "fast" è solo legacy (no LSTM): con oem=1 (LSTM_ONLY) il worker
+// fallisce con "LSTM requested, but not present" e degrada l'OCR di tutte
+// le altre lingue del set. oem=3 lascia caricare osd in modalità legacy e
+// le lingue LSTM nella loro modalità nativa.
+const OEM = 3;
+
 function getWorker() {
   if (!_workerPromise) {
     preflightCheck(_langs);
-    _workerPromise = createWorker(_langs, 1, {
+    _workerPromise = createWorker(_langs, OEM, {
       langPath:    TESSDATA_DIR,
       cachePath:   TESSDATA_DIR,
       cacheMethod: 'readOnly',  // niente scritture: i file sono già pronti
-      gzip:        false,        // i .traineddata bundlati sono non compressi
-      workerPath:  getWorkerPath(),
-      corePath:    getCorePath(),
+      gzip:        false,       // i .traineddata bundlati sono non compressi
       logger:       () => {},
       errorHandler: () => {},
     }).catch(err => {
