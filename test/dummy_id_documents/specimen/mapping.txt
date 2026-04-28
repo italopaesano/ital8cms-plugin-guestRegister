@@ -1,0 +1,52 @@
+# Mappa specimen → documento
+#
+# Origine: PRADO — Public Register of Authentic travel and identity Documents
+#         Online (Consiglio dell'UE)
+#         https://www.consilium.europa.eu/prado/en/search-by-document-country.html
+#
+# Convenzione nome file:
+#   <nazione>_<tipodocumento>_<lato>_<varianteopt>.<ext>
+# dove:
+#   nazione   = it, uk, ...
+#   tipo      = ci_cartacea, cie, passaporto, patente, permesso_soggiorno
+#   lato      = fronte, retro
+#   variante  = nome titolare se più versioni dello stesso tipo
+#
+# Per ciascun file: ID PRADO originale, descrizione, esito pipeline al
+# momento del rename (vedi commit per il run completo).
+
+# ──── Italia ──────────────────────────────────────────────────────────────────
+
+it_ci_cartacea_fronte.JPG          (PRADO 65688)  Carta Identità cartacea (vecchio modello), fronte. Codice fiscale MCDNNA71E52H501N. Validità 01.07.2004 → 30.06.2009. NO MRZ. Pipeline: tesseract fallback, 0/7 (richiede extractIdent dedicato).
+
+it_cie_fronte.jpg                  (PRADO 282807) Carta Identità Elettronica (CIE), fronte. NO MRZ. Pipeline: tesseract fallback, 0/7 (richiede extractIdele dedicato).
+
+it_cie_retro_macedonia.JPG         (PRADO 65687)  CIE retro, MRZ TD1, MACEDONIA ANNA. Pipeline: mrz-loose ✓, tipoDocumento=IDELE.
+
+it_cie_retro_macedonia_v2.JPG      (PRADO 227800) CIE retro, MRZ TD1, MACEDONIA ANNA (variante più recente). Pipeline: mrz-loose ✓, tipoDocumento=IDELE.
+
+it_cie_retro_rossi_bianca.jpg      (PRADO 282808) CIE retro, MRZ TD1, ROSSI BIANCA. Pipeline: mrz-loose ✓, tipoDocumento=IDELE.
+
+it_passaporto_rossi_maria.JPG      (PRADO 137575) Passaporto IT, pagina dati, MRZ TD3, ROSSI MARIA. Pipeline: mrz-loose ✓, tipoDocumento=PASOR.
+
+it_passaporto_rossi_maria_v2.jpg   (PRADO 365289) Passaporto IT, variante ROSSI MARIA. Pipeline: mrz-loose ✓, tipoDocumento=PASOR.
+
+it_passaporto_rossini.JPG          (PRADO 135569) Passaporto IT, MRZ TD3 con cognome lunghissimo (ROSSINI DEL MONTE PIU LUNGO DI QUARANTA). Pipeline: mrz-loose parziale 6/7.
+
+it_patente_fronte_bianchi.JPG      (PRADO 135225) Patente di Guida IT, fronte, BIANCHI ANTONIO. NO MRZ. Pipeline: tesseract+extractPatente, 5/7 (cognome, nome, dataNascita, tipoDocumento, numeroDocumento).
+
+it_patente_fronte_bonaparte.jpg    (PRADO 254658) Patente di Guida IT, fronte, BONAPARTE LEONE. NO MRZ. Pipeline: tesseract+extractPatente, 2/7 (tipo + numero — OCR molto rumoroso sui campi nominativi).
+
+it_permesso_soggiorno_fronte.jpg   (PRADO 345325) Permesso di Soggiorno IT, fronte, ALDOMAR. NO MRZ visibile. Pipeline: tesseract fallback, 0/7. NB: il portale alloggiati NON ha codice dedicato — l'ospite va registrato col proprio documento d'identità del paese d'origine.
+
+it_permesso_soggiorno_retro.jpg    (PRADO 345326) Permesso di Soggiorno IT, retro, MRZ TD1, ALDOMAR MARIA. Pipeline: mrz-loose 6/7, tipoDocumento=null (CR non in elenco portale; vedi mapDocumentType).
+
+it_unknown_363182.jpg              (PRADO 363182) Documento non identificato (OCR molto rumoroso, qualità immagine bassa). Pipeline: tesseract fallback, 0/7.
+
+it_unknown_363207.jpg              (PRADO 363207) Idem 363182.
+
+it_unknown_blank_227801.JPG        (PRADO 227801) Lato bianco/poco contenuto (probabilmente retro patente). Pipeline: tesseract fallback, 0/7.
+
+# ──── Regno Unito ─────────────────────────────────────────────────────────────
+
+uk_passaporto_diplomatico.JPG      (PRADO 385995) Passaporto Diplomatico UK, MRZ TD3, ANGELA. Pipeline: mrz-loose ✓, tipoDocumento=PASDI. NB: il watermark "UK DIPLOMATIC SPECIMEN" del PRADO viene letto come parte del cognome.

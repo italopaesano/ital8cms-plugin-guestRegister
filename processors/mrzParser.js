@@ -116,14 +116,61 @@ function mrzDateToDisplay(yymmdd) {
   return `${dd}/${mm}/${fullYear}`;
 }
 
-// Codice MRZ documento → codice portale alloggiati (5 caratteri)
+// Codice MRZ documento → codice portale alloggiati (5 caratteri).
+//
+// I primi 1-2 caratteri della MRZ identificano il tipo documento (ICAO Doc
+// 9303). Per il portale alloggiati italiano:
+//   - I[A-Z<]   → IDELE  (carta identità con MRZ = sempre elettronica;
+//                        la cartacea IDENT non ha MRZ)
+//   - IR        → RIFUG  (refugee travel document)
+//   - IP        → IDENT  (internal passport, raro — carta soggiorno italiana
+//                        di vecchia generazione, mappata a IDENT)
+//   - C[I,L,K,< con OCR error] → IDELE  (specimen italiani PRADO mostrano
+//                        prefissi "CI", "CL", "C<" sui CIE — variante non-ICAO
+//                        del codice italiano, comportamento osservato).
+//   - CR        → null   (residence card / permesso di soggiorno: NON è nella
+//                        lista del portale alloggiati. L'operatore deve
+//                        registrare l'ospite con il SUO documento di identità,
+//                        non con il permesso.)
+//   - P[A-Z<]   → PASOR  (passaporto ordinario)
+//   - PD        → PASDI  (passaporto diplomatico)
+//   - PS        → PASSE  (passaporto di servizio)
+//   - D[A-Z<]   → PATEN  (driving licence)
+//   - V         → null   (visto: non è documento d'identità)
+//
+// Sui codici non riconosciuti torniamo i primi 5 caratteri come "best effort":
+// l'operatore vedrà comunque qualcosa di significativo e potrà correggerlo.
 function mapDocumentType(raw) {
   if (!raw) return null;
   const t = raw.replace(/</g, '').toUpperCase();
-  if (t.startsWith('P')) return 'PASOR';  // Passaporto ordinario
-  if (t.startsWith('I')) return 'IDENT';  // Carta d'identità
-  if (t.startsWith('D')) return 'PATEN';  // Patente (driving licence)
-  return t.substring(0, 5) || null;       // Altri tipi: primi 5 caratteri
+  if (!t) return null;
+
+  // Refugee, prima del generico 'I' perché 'IR' è un caso speciale
+  if (t.startsWith('IR')) return 'RIFUG';
+  // Internal passport / carta soggiorno legacy
+  if (t.startsWith('IP')) return 'IDENT';
+  // Carta identità elettronica (qualunque variante "I*" rimanente)
+  if (t.startsWith('I'))  return 'IDELE';
+
+  // Residence card / permesso di soggiorno: non in elenco portale
+  if (t.startsWith('CR')) return null;
+  // Variante codice italiano CIE: prefissi "CI", "CL", "CK", "C<" osservati
+  // sui specimen PRADO. Mappati a IDELE.
+  if (t.startsWith('C'))  return 'IDELE';
+
+  // Passaporti
+  if (t.startsWith('PD')) return 'PASDI';
+  if (t.startsWith('PS')) return 'PASSE';
+  if (t.startsWith('P'))  return 'PASOR';
+
+  // Patente
+  if (t.startsWith('D'))  return 'PATEN';
+
+  // Visto: non è documento d'identità per il portale
+  if (t.startsWith('V'))  return null;
+
+  // Best effort: primi 5 caratteri come codice "non standard"
+  return t.substring(0, 5) || null;
 }
 
 // Rimuove i filler '<' e normalizza gli spazi
