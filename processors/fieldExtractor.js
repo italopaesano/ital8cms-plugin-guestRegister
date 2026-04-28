@@ -36,24 +36,42 @@ function detectDocumentType(text) {
 //   1. Cognome   2. Nome   3. Data e luogo nascita
 //   4a. Data rilascio   4b. Data scadenza   4c. Autorità
 //   5. Numero patente
+//
+// I regex sono volutamente tolleranti agli errori OCR osservati sui specimen
+// PRADO italiani:
+//   - Il punto dopo il numero campo (`1.`) può diventare virgola `1,` o
+//     mancare del tutto (`1 BIANCHI`). Pattern: `1[.,]?\s+`
+//   - I campi possono stare sulla stessa riga di Tesseract (no `^...$/m`).
+//     Per fermare il match al campo successivo uso lookahead `(?=\s+\b2[.,]?)`.
+//   - I separatori data possono essere `/`, `.` o `-` (specimen 254658 ha
+//     "25/12/1965ROMA" senza spazio dopo, gestito da regex \d{2,4}\b).
+//   - Cognomi/nomi italiani possono includere apostrofi e accenti
+//     (es. "DELL'AGNELLO", "BÒ"): ammessi in [A-ZÀ-Ý'\s-].
+
+const PATENTE_RE = {
+  cognome:    /\b1[.,]?\s+([A-ZÀ-Ý][A-ZÀ-Ý'\s-]*?)(?=\s+\b2[.,]?\s|\s*$|\n)/m,
+  nome:       /\b2[.,]?\s+([A-ZÀ-Ý][A-ZÀ-Ý'\s-]*?)(?=\s+\b3[.,]?\s|\s*$|\n)/m,
+  campo3:     /\b3[.,]?\s+(\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4})\s*([A-ZÀ-Ý][A-ZÀ-Ý\s'-]+?)\s*(?:\(([A-Z]{2})\))?(?=\s+\b4|\s*$|\n)/m,
+  numero:     /\b5[.,]?\s+([A-Z0-9]{6,12})/,
+};
 
 function extractPatente(text) {
   const warnings = [];
 
   // Campo 1 — Cognome
-  const cognome = extract(text, /\b1\.\s+([A-Z][A-Z '-]*)$/m);
+  const cognome = extract(text, PATENTE_RE.cognome);
 
   // Campo 2 — Nome
-  const nome = extract(text, /\b2\.\s+([A-Z][A-Z '-]*)$/m);
+  const nome = extract(text, PATENTE_RE.nome);
 
   // Campo 3 — Data nascita + Luogo (PV)
-  const campo3 = text.match(/\b3\.\s+(\d{1,2}\/\d{2}\/\d{2,4})\s+([A-Z][A-Z\s]+?)\s*\(([A-Z]{2})\)/);
+  const campo3 = text.match(PATENTE_RE.campo3);
   const dataNascita      = campo3 ? expandYear(campo3[1]) : null;
   const luogoNascita     = campo3 ? campo3[2].trim()      : null;
-  const provinciaNascita = campo3 ? campo3[3]             : null;
+  const provinciaNascita = campo3 ? (campo3[3] || null)   : null;
 
   // Campo 5 — Numero patente
-  const numeroDocumento = extract(text, /\b5\.\s+([A-Z0-9]+)/);
+  const numeroDocumento = extract(text, PATENTE_RE.numero);
 
   const data = {
     cognome,
