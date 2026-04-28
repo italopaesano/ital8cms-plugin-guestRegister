@@ -244,6 +244,125 @@ function looseMrzParse(lines) {
   return null;
 }
 
+// ─── Strategy 4: position-aware repair ──────────────────────────────────────
+//
+// Tesseract sull'alfabeto MRZ (anche con whitelist `<0123456789A-Z`) confonde
+// caratteri visivamente simili (`O`/`0`, `I`/`1`/`L`/`T`, `Z`/`2`, `S`/`5`,
+// `G`/`6`, `B`/`8`). Senza contesto la confusione è irrisolvibile.
+//
+// Con il layout posizionale ICAO Doc 9303 invece sì: ogni posizione di una
+// MRZ ha un tipo determinato (digit / alpha / alphanumeric / filler). Se la
+// posizione X di TD3 line 2 deve essere un digit (es. check digit della data
+// di nascita) e Tesseract ha messo `S`, sostituiamo con `5` con alta
+// confidenza. Lo stesso al contrario nelle posizioni alfabetiche.
+//
+// La repair viene applicata SOLO a linee di lunghezza canonica esatta
+// (no tolerance ±3): se la lunghezza è sbagliata, le mask si disallineano e
+// la repair guasta più di quanto sistema. La caduta a loose parse continua a
+// gestire quei casi senza repair.
+//
+// Posizioni 'X' (alphanumeric, es. numero documento) NON vengono toccate:
+// sono ambigue per definizione.
+
+// Mask per i 3 formati MRZ. Convenzioni:
+//   'A' = alpha + `<`
+//   'N' = numeric + `<`
+//   'X' = alphanumeric + `<` (mai modificato)
+const MRZ_MASKS = {
+  // TD3 — Passaporto (2 × 44)
+  // L1 [0-1] tipo | [2-4] stato | [5-43] nome
+  // L2 [0-8] docnum | [9] check | [10-12] nat | [13-18] dob | [19] check
+  //    | [20] sesso | [21-26] expiry | [27] check | [28-41] optional
+  //    | [42] check | [43] composite check
+  TD3: {
+    line1: 'AA' + 'AAA' + 'A'.repeat(39),
+    line2: 'X'.repeat(9) + 'N' + 'AAA' + 'N'.repeat(6) + 'N' + 'A'
+         + 'N'.repeat(6) + 'N' + 'X'.repeat(14) + 'N' + 'N',
+  },
+  // TD2 — Documento istituzionale (2 × 36)
+  TD2: {
+    line1: 'AA' + 'AAA' + 'A'.repeat(31),
+    line2: 'X'.repeat(9) + 'N' + 'AAA' + 'N'.repeat(6) + 'N' + 'A'
+         + 'N'.repeat(6) + 'N' + 'X'.repeat(7) + 'N',
+  },
+  // TD1 — Carta d'identità (3 × 30)
+  // L1 [0-1] tipo | [2-4] stato | [5-13] docnum | [14] check | [15-29] optional1
+  // L2 [0-5] dob | [6] check | [7] sesso | [8-13] expiry | [14] check
+  //    | [15-17] nat | [18-28] optional2 | [29] composite check
+  // L3 [0-29] cognome<<nome
+  TD1: {
+    line1: 'AA' + 'AAA' + 'X'.repeat(9) + 'N' + 'X'.repeat(15),
+    line2: 'N'.repeat(6) + 'N' + 'A' + 'N'.repeat(6) + 'N' + 'AAA'
+         + 'X'.repeat(11) + 'N',
+    line3: 'A'.repeat(30),
+  },
+};
+
+// Sostituzioni alpha→digit nelle posizioni 'N'. Lista volutamente conservativa:
+// `A→4` escluso perché può rompere nomi/codici-stato dove `A` è legittimo se
+// il mask è disallineato per un caso di lunghezza imprevisto.
+const TO_DIGIT = {
+  O: '0', Q: '0', D: '0',
+  I: '1', L: '1', T: '1',
+  Z: '2',
+  S: '5',
+  G: '6',
+  B: '8',
+};
+
+// Sostituzioni digit→alpha nelle posizioni 'A'. Speculare a TO_DIGIT.
+const TO_ALPHA = {
+  '0': 'O',
+  '1': 'I',
+  '2': 'Z',
+  '5': 'S',
+  '6': 'G',
+  '8': 'B',
+};
+
+function repairLineByMask(line, mask) {
+  // Safety: applico la repair solo se la linea è di lunghezza canonica
+  // ESATTA. Se è ±1/±3 la mask si disallineerebbe e finiremmo per guastare
+  // posizioni successive. Quei casi cadono al loose parse senza repair.
+  if (line.length !== mask.length) return line;
+  let out = '';
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    const m = mask[i];
+    if (c === '<') { out += c; continue; }
+    if (m === 'N' && TO_DIGIT[c]) { out += TO_DIGIT[c]; continue; }
+    if (m === 'A' && TO_ALPHA[c]) { out += TO_ALPHA[c]; continue; }
+    out += c;  // 'X' (alphanum) o carattere già coerente con la posizione
+  }
+  return out;
+}
+
+function repairMrzLines(lines) {
+  if (!Array.isArray(lines) || lines.length === 0) return lines;
+  if (lines.length === 2 && lines[0].length === 44 && lines[1].length === 44) {
+    return [
+      repairLineByMask(lines[0], MRZ_MASKS.TD3.line1),
+      repairLineByMask(lines[1], MRZ_MASKS.TD3.line2),
+    ];
+  }
+  if (lines.length === 2 && lines[0].length === 36 && lines[1].length === 36) {
+    return [
+      repairLineByMask(lines[0], MRZ_MASKS.TD2.line1),
+      repairLineByMask(lines[1], MRZ_MASKS.TD2.line2),
+    ];
+  }
+  if (lines.length === 3 && lines.every(l => l.length === 30)) {
+    return [
+      repairLineByMask(lines[0], MRZ_MASKS.TD1.line1),
+      repairLineByMask(lines[1], MRZ_MASKS.TD1.line2),
+      repairLineByMask(lines[2], MRZ_MASKS.TD1.line3),
+    ];
+  }
+  // Lunghezza non canonica: la repair sarebbe troppo rischiosa, le linee
+  // vanno a loose senza modifiche.
+  return lines;
+}
+
 // ─── Parsing principale ───────────────────────────────────────────────────────
 
 async function extractMrzData(mrzLines, opts = {}) {
@@ -306,4 +425,4 @@ async function extractMrzData(mrzLines, opts = {}) {
   return { data, warnings, loose: isLoose };
 }
 
-module.exports = { findMrzLines, extractMrzData };
+module.exports = { findMrzLines, extractMrzData, repairMrzLines };
