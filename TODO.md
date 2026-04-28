@@ -30,7 +30,7 @@ Confermato anche standalone (`node test/testOcr.js …`): l'OCR completa in ~3 s
 - [ ] Commenti JSON5 in `pluginConfig.json5` persi a ogni install
 - [x] ~~Migliorare MRZ parsing con preprocessing immagine~~ → fatto via two-pass + whitelist (commit `d92fbcf`); preprocessing immagine vero (sharp/jimp) **non** introdotto, riservato per fase successiva se i casi attuali non bastano
 - [x] ~~Whitelist Tesseract per MRZ: `<0123456789A-Z`~~ → fatto in commit `d92fbcf`
-- [ ] Position-aware repair sui campi MRZ (digit vs alpha): correggere `0↔O`, `1↔I` nelle posizioni numeriche del MRZ per ottenere `numeroDocumento` perfetti
+- [x] ~~Position-aware repair sui campi MRZ (digit vs alpha)~~ → fatto in commit successivo: mask posizionali per TD1/TD2/TD3 (ICAO Doc 9303), `O→0`/`I→1`/`S→5` ecc nelle posizioni numeriche e speculare nelle alpha. Applicata solo dopo pass-2 (whitelist OCR già attiva) su righe di lunghezza canonica esatta. Risultati: `cittadinanza` recuperata in più immagini (`6PI→GPI`, `1VA→IVA`), `dataNascita` estratta su 2 nuove immagini (`sample_front2`, `sample_generated_front1`). 7/10 → **8/10** estrazioni MRZ utili. `numeroDocumento` resta in posizioni alphanumeric (non recuperabile per design)
 - [ ] Espandere fieldExtractor per IDENT, IDELE, PASOR, PATEN, PATNA
 - [ ] Fix testOcr.js (one-liner)
 

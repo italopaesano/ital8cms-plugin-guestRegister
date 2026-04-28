@@ -1,8 +1,8 @@
 'use strict';
 
-const { ocrImage, ocrMrzRegion }       = require('./tesseract');
-const { findMrzLines, extractMrzData } = require('./mrzParser');
-const { extractFields }                = require('./fieldExtractor');
+const { ocrImage, ocrMrzRegion }                       = require('./tesseract');
+const { findMrzLines, extractMrzData, repairMrzLines } = require('./mrzParser');
+const { extractFields }                                = require('./fieldExtractor');
 
 // Campi obbligatori: se uno manca il risultato è parziale
 const REQUIRED_FIELDS = [
@@ -109,11 +109,22 @@ async function process(buffer, { debug = false } = {}) {
     if (pass2Text) {
       mrzLines = findMrzLines(pass2Text);
       if (mrzLines) {
-        // Strict parse sul testo del pass-2 (whitelist applicata)
+        // Position-aware repair (Strategy 4): sostituisce digit↔alpha sui
+        // residui di confusione OCR (`O→0`, `I→1`, `S→5` nelle posizioni
+        // numeriche; `0→O`, `1→I`, `5→S` nelle posizioni alfabetiche),
+        // sfruttando il layout posizionale ICAO Doc 9303. Solo righe di
+        // lunghezza canonica esatta vengono modificate (le altre passano
+        // intatte, vedi repairMrzLines).
+        mrzLines = repairMrzLines(mrzLines);
+
+        // Strict parse sul testo del pass-2 ripulito: dopo la repair i check
+        // digit hanno una chance reale di tornare validi.
         const rStrict = await extractMrzData(mrzLines);
         if (rStrict) return makeResult(rStrict, 'mrz-pass2', rawText, debug);
 
-        // Loose parse: posizionale senza validazione check digit
+        // Loose parse: posizionale senza validazione check digit, ma sulle
+        // stesse righe già ripulite dalla repair → campi (data nascita,
+        // cittadinanza, sesso) più affidabili di prima.
         const rLoose = await extractMrzData(mrzLines, { allowLoose: true });
         if (rLoose) return makeResult(rLoose, 'mrz-loose', rawText, debug);
       }
