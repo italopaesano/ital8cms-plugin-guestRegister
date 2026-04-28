@@ -21,17 +21,18 @@ Confermato anche standalone (`node test/testOcr.js …`): l'OCR completa in ~3 s
 
 ### Cosa NON è stato risolto (limiti del codice esistente, non del bundling)
 
-- [ ] **MRZ parser** (`processors/mrzParser.js`) usa il package `mrz` che è strict sui caratteri: una OCR imperfetta su una foto "vera" rompe il check digit MRZ e cade nel fallback. Migliorabile con preprocessing immagine (cropping zona MRZ, contrast boost, character whitelist `<0123456789A-Z`).
+- [x] **MRZ parser** — affrontato in commit `d92fbcf`: lenient detection, two-pass OCR con whitelist su worker dedicato, loose parse fallback. Risultati su `test/dummy_id_documents/`: prima 0/10 producevano dati MRZ, ora 7/10. I 3 falliti (`id_card_front_france`, `sample_front3`, ecc.) non hanno MRZ visibile sul lato fotografato — non è un problema del parser. Residue OCR confusion sui digit (`0↔O`, `1↔I`) nel `numeroDocumento` — affrontabile con position-aware repair (Strategia 4) in fase successiva.
 - [ ] **Field extractor** (`processors/fieldExtractor.js`) è stub per fase 3 (per ora solo patente EU), come documentato in `EXPLAIN.md` §8. Va espanso documento per documento.
 - [ ] **`test/testOcr.js`** non chiama `process.exit(0)` né termina il worker → script hangs dopo aver stampato (issue pre-esistente, una riga di fix).
 
 ### Cose da fare in fase successiva
 
 - [ ] Commenti JSON5 in `pluginConfig.json5` persi a ogni install
-- [ ] Migliorare MRZ parsing con preprocessing immagine
+- [x] ~~Migliorare MRZ parsing con preprocessing immagine~~ → fatto via two-pass + whitelist (commit `d92fbcf`); preprocessing immagine vero (sharp/jimp) **non** introdotto, riservato per fase successiva se i casi attuali non bastano
+- [x] ~~Whitelist Tesseract per MRZ: `<0123456789A-Z`~~ → fatto in commit `d92fbcf`
+- [ ] Position-aware repair sui campi MRZ (digit vs alpha): correggere `0↔O`, `1↔I` nelle posizioni numeriche del MRZ per ottenere `numeroDocumento` perfetti
 - [ ] Espandere fieldExtractor per IDENT, IDELE, PASOR, PATEN, PATNA
 - [ ] Fix testOcr.js (one-liner)
-- [ ] Whitelist Tesseract per MRZ: `<0123456789A-Z`
 
 ---
 

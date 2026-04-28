@@ -2,7 +2,7 @@
 
 const path = require('path');
 const fs   = require('fs');
-const { createWorker } = require('tesseract.js');
+const { createWorker, PSM } = require('tesseract.js');
 
 // ─── Path locali (zero downloads runtime) ───────────────────────────────────
 //
@@ -31,8 +31,8 @@ let _langs = 'ita+eng+osd';
 
 function setLangs(langs) {
   if (typeof langs !== 'string' || !langs.trim()) return;
-  if (_workerPromise) {
-    console.warn('[guestRegister/tesseract] setLangs() ignorato: il worker è già stato inizializzato.');
+  if (_workerFullPromise || _workerMrzPromise) {
+    console.warn('[guestRegister/tesseract] setLangs() ignorato: i worker sono già stati inizializzati.');
     return;
   }
   _langs = langs.trim();
@@ -76,8 +76,6 @@ function preflightCheck(langs) {
 // un costo di ~300 ms e ~60 MB di RAM (lingue caricate). Costo ammortizzato
 // trascurabile rispetto alla memoria persa.
 
-let _workerPromise = null;
-
 // OEM (OCR Engine Mode): 3 = LSTM + Legacy combined (default Tesseract).
 // Necessario quando le lingue includono osd, perché osd.traineddata della
 // variante "fast" è solo legacy (no LSTM): con oem=1 (LSTM_ONLY) il worker
@@ -86,30 +84,99 @@ let _workerPromise = null;
 // le lingue LSTM nella loro modalità nativa.
 const OEM = 3;
 
-function getWorker() {
-  if (!_workerPromise) {
+// Due worker dedicati anziché uno solo:
+//   - _workerFull   → OCR generale (pass-1, default params)
+//   - _workerMrz    → OCR MRZ-specific (pass-2, whitelist + PSM SINGLE_BLOCK
+//                     impostati una volta sola alla creazione)
+//
+// Motivo: tesseract.js v7 NON resetta `tessedit_char_whitelist` quando lo
+// si rimette a stringa vuota — la whitelist precedente resta attiva e
+// inquina i pass successivi. Tenere i parametri immutabili in due worker
+// separati elimina questa classe di bug a costo di ~150 MB extra (il
+// secondo worker carica le stesse lingue del primo). Trascurabile rispetto
+// al downside di un single-worker con stato corrotto.
+let _workerFullPromise = null;
+let _workerMrzPromise  = null;
+
+function _newWorker(initOpts = {}) {
+  return createWorker(_langs, OEM, {
+    langPath:    TESSDATA_DIR,
+    cachePath:   TESSDATA_DIR,
+    cacheMethod: 'readOnly',  // niente scritture: i file sono già pronti
+    gzip:        false,       // i .traineddata bundlati sono non compressi
+    logger:       () => {},
+    errorHandler: () => {},
+    ...initOpts,
+  });
+}
+
+function getWorkerFull() {
+  if (!_workerFullPromise) {
     preflightCheck(_langs);
-    _workerPromise = createWorker(_langs, OEM, {
-      langPath:    TESSDATA_DIR,
-      cachePath:   TESSDATA_DIR,
-      cacheMethod: 'readOnly',  // niente scritture: i file sono già pronti
-      gzip:        false,       // i .traineddata bundlati sono non compressi
-      logger:       () => {},
-      errorHandler: () => {},
-    }).catch(err => {
-      // Reset cache: il prossimo tentativo può ricreare il worker invece di
-      // restare bloccato su una Promise rifiutata.
-      _workerPromise = null;
+    _workerFullPromise = _newWorker().catch(err => {
+      _workerFullPromise = null;
       throw err;
     });
   }
-  return _workerPromise;
+  return _workerFullPromise;
+}
+
+function getWorkerMrz() {
+  if (!_workerMrzPromise) {
+    preflightCheck(_langs);
+    _workerMrzPromise = (async () => {
+      const w = await _newWorker();
+      // Parametri MRZ impostati una volta sola, mai modificati. Niente
+      // try/finally restoration → niente leak di stato fra chiamate.
+      await w.setParameters({
+        tessedit_char_whitelist: MRZ_WHITELIST,
+        tessedit_pageseg_mode:   String(PSM.SINGLE_BLOCK),
+      });
+      return w;
+    })().catch(err => {
+      _workerMrzPromise = null;
+      throw err;
+    });
+  }
+  return _workerMrzPromise;
 }
 
 async function ocrImage(buffer) {
-  const worker = await getWorker();
-  const { data: { text } } = await worker.recognize(buffer);
-  return text;
+  const worker = await getWorkerFull();
+  // Output flag `blocks: true` per ottenere l'albero blocks→paragraphs→lines
+  // con bbox per riga: necessario al chiamante per identificare la zona MRZ
+  // e ri-OCR-arla con whitelist (vedi ocrMrzRegion).
+  const r = await worker.recognize(buffer, {}, { text: true, blocks: true });
+  return { text: r.data.text, lines: extractLines(r.data.blocks) };
 }
 
-module.exports = { ocrImage, setLangs };
+// Aplana l'albero blocks→paragraphs→lines in un array { text, bbox }, in
+// ordine di lettura (top-to-bottom, left-to-right come restituito da Tesseract).
+function extractLines(blocks) {
+  const out = [];
+  for (const b of blocks || []) {
+    for (const p of b.paragraphs || []) {
+      for (const l of p.lines || []) {
+        out.push({ text: (l.text || '').trim(), bbox: l.bbox });
+      }
+    }
+  }
+  return out;
+}
+
+// ─── OCR pass-2 mirato sulla zona MRZ ───────────────────────────────────────
+//
+// Worker dedicato (getWorkerMrz) con character whitelist `<0123456789A-Z`
+// (alfabeto MRZ ICAO Doc 9303) e PSM SINGLE_BLOCK preimpostati: elimina alla
+// radice le confusioni più comuni dell'OCR multi-lingua sui filler `<` (letti
+// come `£`, «K», «S»). Il rectangle restringe l'inferenza alla zona MRZ.
+const MRZ_WHITELIST = '<0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+
+async function ocrMrzRegion(buffer, rectangle) {
+  const worker = await getWorkerMrz();
+  const opts = rectangle ? { rectangle } : {};
+  const r = await worker.recognize(buffer, opts);
+  return r.data.text;
+}
+
+module.exports = { ocrImage, ocrMrzRegion, setLangs };
