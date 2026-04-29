@@ -27,21 +27,41 @@ variante `tessdata_fast`) sono **pre-bundlati** in
 `processors/tesseract-data/`, così il plugin funziona offline senza
 contattare CDN esterni (`tessdata.projectnaptha.com`, `unpkg.com`).
 
-Per riscaricarli o cambiare variante:
+Tre varianti supportate (fast committata, le altre due scaricabili in
+cartelle separate gitignored):
 
-    node scripts/downloadTessdata.js                       # default: fast
-    node scripts/downloadTessdata.js --variant=best        # qualità massima, ~1.5 GB
+| Variante | Disk | Recognize | Accuratezza | Stato |
+|---|---|---|---|---|
+| `fast` (default) | ~660 MB | 2-4 s | media | committata |
+| `standard` | ~1.4 GB | 4-7 s | alta | scaricabile |
+| `best` | ~1.5 GB | 6-10 s | massima | scaricabile |
+
+Per scaricare una variante diversa:
+
+    node scripts/downloadTessdata.js --variant=standard    # in tesseract-data-standard/
+    node scripts/downloadTessdata.js --variant=best        # in tesseract-data-best/
     node scripts/downloadTessdata.js --langs=ita,eng,osd   # solo subset
     node scripts/downloadTessdata.js --force               # forza ri-download
 
+Per **attivare** la variante scaricata, modificare `pluginConfig.json5`:
+
+```json5
+"custom": {
+  "ocrLangs": "ita+eng+osd",
+  "ocrTessdataVariant": "best"   // "fast" | "standard" | "best"
+}
+```
+
+e riavviare il CMS. Le lingue effettivamente caricate dal worker sono
+quelle in `ocrLangs`; il pre-flight check verifica che ogni lingua abbia
+il proprio `.traineddata` nella cartella della variante scelta, altrimenti
+il primo OCR fallisce con un errore diagnostico.
+
+Per rimuovere una variante scaricata: `rm -rf processors/tesseract-data-<variante>/`.
+
 Lo script è idempotente. Vedi
 [`processors/tesseract-data/README.md`](./processors/tesseract-data/README.md)
-per dettagli sulla provenienza dei file.
-
-Le lingue caricate dal worker sono configurabili in `pluginConfig.json5`
-→ `custom.ocrLangs` (default `"ita+eng+osd"`). Modificandole, assicurarsi
-che i `.traineddata` corrispondenti esistano in `processors/tesseract-data/`
-(altrimenti il plugin si rifiuta di avviare l'OCR con messaggio diagnostico).
+per dettagli completi.
 
 ## Test OCR standalone
 

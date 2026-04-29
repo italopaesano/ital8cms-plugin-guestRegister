@@ -2,3 +2,8 @@ node_modules/
 coverage/
 .env
 *.log
+
+# Varianti tessdata scaricate localmente (standard ~1.4 GB, best ~1.5 GB).
+# La variante `fast` resta committata in processors/tesseract-data/.
+# Vedi scripts/downloadTessdata.js e processors/tesseract-data/README.md.
+processors/tesseract-data-*/
