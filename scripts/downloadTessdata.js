@@ -1,16 +1,27 @@
 'use strict';
 
-// Scarica tutti i modelli Tesseract (variante "fast", non compressi) nella
-// cartella processors/tesseract-data/. Bundling locale per evitare il download
+// Scarica i modelli Tesseract (.traineddata, non compressi) in una cartella
+// per-variante sotto processors/. Bundling locale per evitare il download
 // runtime da CDN esterni (richiesto in ambienti senza accesso a
 // tessdata.projectnaptha.com / unpkg.com).
 //
+// Destinazione (calcolata automaticamente in base a --variant):
+//   fast     → processors/tesseract-data/                   (committata in repo)
+//   standard → processors/tesseract-data-standard/          (gitignored)
+//   best     → processors/tesseract-data-best/              (gitignored)
+//
 // Uso:
-//   node scripts/downloadTessdata.js                # tessdata_fast (default)
-//   node scripts/downloadTessdata.js --variant=standard   # ~1.4 GB
-//   node scripts/downloadTessdata.js --variant=best       # ~1.5 GB
-//   node scripts/downloadTessdata.js --force         # ri-scarica anche i file presenti
-//   node scripts/downloadTessdata.js --langs=ita,eng,osd  # solo un sottoinsieme
+//   node scripts/downloadTessdata.js                       # fast (default)
+//   node scripts/downloadTessdata.js --variant=standard    # ~1.4 GB
+//   node scripts/downloadTessdata.js --variant=best        # ~1.5 GB
+//   node scripts/downloadTessdata.js --langs=ita,eng,osd   # solo subset
+//   node scripts/downloadTessdata.js --force               # ri-scarica anche i presenti
+//   node scripts/downloadTessdata.js --dest=<path>         # override percorso (avanzato)
+//
+// Per attivare la variante scaricata: editare pluginConfig.json5 →
+// custom.ocrTessdataVariant ("fast" | "standard" | "best") e riavviare il CMS.
+//
+// Per rimuovere una variante scaricata: rm -rf processors/tesseract-data-<variant>/
 //
 // Richiede Node.js >= 18 (usa il fetch globale).
 //
@@ -34,11 +45,21 @@ function getArg(name, fallback) {
 
 const VARIANT = getArg('variant', 'fast');
 const LANG_FILTER = getArg('langs', null);  // CSV opzionale, es. "ita,eng,osd"
+const DEST_OVERRIDE = getArg('dest', null);  // path override, opzionale
 
 const REPO_BY_VARIANT = {
   fast:     'tesseract-ocr/tessdata_fast',
   standard: 'tesseract-ocr/tessdata',
   best:     'tesseract-ocr/tessdata_best',
+};
+
+// Cartella per-variante: la `fast` resta in `tesseract-data/` (committata) per
+// retrocompatibilità; le altre vanno in cartelle separate gitignored, così
+// chi clona il repo ha già un setup funzionante senza download obbligati.
+const DIR_BY_VARIANT = {
+  fast:     'tesseract-data',
+  standard: 'tesseract-data-standard',
+  best:     'tesseract-data-best',
 };
 
 const REPO = REPO_BY_VARIANT[VARIANT];
@@ -47,8 +68,25 @@ if (!REPO) {
   process.exit(1);
 }
 
+const PROCESSORS_DIR = path.resolve(__dirname, '..', 'processors');
+const DEST = DEST_OVERRIDE
+  ? path.resolve(DEST_OVERRIDE)
+  : path.join(PROCESSORS_DIR, DIR_BY_VARIANT[VARIANT]);
 const BASE = `https://raw.githubusercontent.com/${REPO}/main`;
-const DEST = path.resolve(__dirname, '..', 'processors', 'tesseract-data');
+
+// Safety: la cartella `tesseract-data/` (committata) viene scritta solo se la
+// variante richiesta è esattamente `fast` con `--force`. Senza --force, e con
+// variante diversa da fast, ci rifiutiamo di toccarla per evitare overwrite
+// accidentali del bundle in repository.
+const FAST_DIR = path.join(PROCESSORS_DIR, DIR_BY_VARIANT.fast);
+if (path.resolve(DEST) === path.resolve(FAST_DIR) && VARIANT !== 'fast' && !FORCE) {
+  console.error(
+    `Rifiuto di scaricare la variante "${VARIANT}" in ${FAST_DIR}: è la cartella ` +
+    `committata della variante fast. Usa --variant=${VARIANT} senza --dest, oppure ` +
+    `aggiungi --force se sai cosa stai facendo.`
+  );
+  process.exit(1);
+}
 
 // ── Liste ────────────────────────────────────────────────────────────────────
 //
@@ -179,6 +217,23 @@ async function main() {
     console.log('Lista falliti:');
     for (const f of failures) console.log(`  - ${f.label}: ${f.error}`);
     process.exit(1);
+  }
+
+  // Hint di attivazione: la sola presenza dei file non basta — il plugin
+  // legge la variante attiva da pluginConfig.json5 → custom.ocrTessdataVariant.
+  if (VARIANT !== 'fast') {
+    console.log('');
+    console.log('────────────────────────────────────────────────────────────');
+    console.log(`Variante "${VARIANT}" scaricata in:`);
+    console.log(`  ${DEST}`);
+    console.log('');
+    console.log('Per ATTIVARLA:');
+    console.log(`  1. Modifica pluginConfig.json5 → custom.ocrTessdataVariant: "${VARIANT}"`);
+    console.log('  2. Riavvia il CMS');
+    console.log('');
+    console.log('Per RIMUOVERLA in futuro:');
+    console.log(`  rm -rf ${DEST}`);
+    console.log('────────────────────────────────────────────────────────────');
   }
 }
 

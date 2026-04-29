@@ -5,7 +5,7 @@ const path      = require('path');
 const koaMulter = require('@koa/multer');
 const loadJson5 = require('../../core/loadJson5');
 const { process: processDocument } = require('./processors');
-const { setLangs: setOcrLangs }    = require('./processors/tesseract');
+const { setLangs: setOcrLangs, setVariant: setOcrVariant } = require('./processors/tesseract');
 const { generateTxt }              = require('./exporters/questura');
 
 // let: pluginConfig viene ricaricato in loadPlugin() dal path ufficiale del core
@@ -85,6 +85,9 @@ const tipoAlloggiato  = loadJsonFile(path.join(__dirname, 'data/tipo_alloggiato.
 async function loadPlugin(pluginSys, pathPluginFolder) {
   myPluginSys  = pluginSys;
   pluginConfig = loadJson5(path.join(pathPluginFolder, 'pluginConfig.json5'));
+  if (pluginConfig.custom && pluginConfig.custom.ocrTessdataVariant) {
+    setOcrVariant(pluginConfig.custom.ocrTessdataVariant);
+  }
   if (pluginConfig.custom && pluginConfig.custom.ocrLangs) {
     setOcrLangs(pluginConfig.custom.ocrLangs);
   }

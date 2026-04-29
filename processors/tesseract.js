@@ -19,7 +19,17 @@ const { createWorker, PSM } = require('tesseract.js');
 // require() diretti in worker-script/node/getCore.js, che risolvono
 // tesseract.js-core via npm — non passa da corePath.
 
-const TESSDATA_DIR = path.join(__dirname, 'tesseract-data');
+// Tre varianti supportate: fast (default, committata in repo), standard
+// (~1.4 GB) e best (~1.5 GB) scaricabili in cartelle separate via
+// scripts/downloadTessdata.js. Vedi processors/tesseract-data/README.md.
+const VARIANT_DIRS = {
+  fast:     'tesseract-data',
+  standard: 'tesseract-data-standard',
+  best:     'tesseract-data-best',
+};
+
+let _variant = 'fast';
+let _tessdataDir = path.join(__dirname, VARIANT_DIRS.fast);
 
 // ─── Lingue OCR ─────────────────────────────────────────────────────────────
 //
@@ -38,6 +48,25 @@ function setLangs(langs) {
   _langs = langs.trim();
 }
 
+// Imposta la variante tessdata da usare. Va chiamata da main.js loadPlugin()
+// prima del primo OCR (quando _workerFullPromise/_workerMrzPromise sono null).
+// Dopo l'init dei worker la variante è frozen — un setVariant successivo viene
+// ignorato con warning, perché i worker hanno già caricato i .traineddata
+// della variante corrente in RAM.
+function setVariant(variant) {
+  if (!variant) return;
+  if (!Object.prototype.hasOwnProperty.call(VARIANT_DIRS, variant)) {
+    console.warn(`[guestRegister/tesseract] setVariant(${JSON.stringify(variant)}) ignorato: variante sconosciuta. Usa fast | standard | best.`);
+    return;
+  }
+  if (_workerFullPromise || _workerMrzPromise) {
+    console.warn('[guestRegister/tesseract] setVariant() ignorato: i worker sono già stati inizializzati.');
+    return;
+  }
+  _variant = variant;
+  _tessdataDir = path.join(__dirname, VARIANT_DIRS[variant]);
+}
+
 // ─── Pre-flight check ───────────────────────────────────────────────────────
 //
 // Controllo all'init del worker: la cartella tesseract-data esiste e contiene
@@ -46,21 +75,24 @@ function setLangs(langs) {
 // /scan-document.
 
 function preflightCheck(langs) {
-  if (!fs.existsSync(TESSDATA_DIR)) {
+  if (!fs.existsSync(_tessdataDir)) {
+    const variantHint = _variant === 'fast' ? '' : ` --variant=${_variant}`;
     throw new Error(
-      `[guestRegister] Cartella tesseract-data non trovata: ${TESSDATA_DIR}\n` +
-      `Eseguire: node scripts/downloadTessdata.js\n` +
+      `[guestRegister] Cartella tessdata non trovata: ${_tessdataDir}\n` +
+      `Variante richiesta: "${_variant}".\n` +
+      `Eseguire: node scripts/downloadTessdata.js${variantHint}\n` +
       `Vedi processors/tesseract-data/README.md per dettagli.`
     );
   }
   const required = langs.split('+').map(s => s.trim()).filter(Boolean);
   const missing  = required.filter(l =>
-    !fs.existsSync(path.join(TESSDATA_DIR, `${l}.traineddata`))
+    !fs.existsSync(path.join(_tessdataDir, `${l}.traineddata`))
   );
   if (missing.length) {
+    const variantHint = _variant === 'fast' ? '' : ` --variant=${_variant}`;
     throw new Error(
-      `[guestRegister] Lingue mancanti in ${TESSDATA_DIR}: ${missing.join(', ')}\n` +
-      `Eseguire: node scripts/downloadTessdata.js --langs=${missing.join(',')}\n` +
+      `[guestRegister] Lingue mancanti in ${_tessdataDir}: ${missing.join(', ')}\n` +
+      `Eseguire: node scripts/downloadTessdata.js${variantHint} --langs=${missing.join(',')}\n` +
       `Oppure modificare pluginConfig.json5 → custom.ocrLangs.`
     );
   }
@@ -100,8 +132,8 @@ let _workerMrzPromise  = null;
 
 function _newWorker(initOpts = {}) {
   return createWorker(_langs, OEM, {
-    langPath:    TESSDATA_DIR,
-    cachePath:   TESSDATA_DIR,
+    langPath:    _tessdataDir,
+    cachePath:   _tessdataDir,
     cacheMethod: 'readOnly',  // niente scritture: i file sono già pronti
     gzip:        false,       // i .traineddata bundlati sono non compressi
     logger:       () => {},
@@ -179,4 +211,4 @@ async function ocrMrzRegion(buffer, rectangle) {
   return r.data.text;
 }
 
-module.exports = { ocrImage, ocrMrzRegion, setLangs };
+module.exports = { ocrImage, ocrMrzRegion, setLangs, setVariant };

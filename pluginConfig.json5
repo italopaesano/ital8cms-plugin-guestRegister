@@ -19,6 +19,7 @@
       "PATNA",
       "RIFUG"
     ],
-    "ocrLangs": "ita+eng+osd"
+    "ocrLangs": "ita+eng+osd",
+    "ocrTessdataVariant": "fast"
   }
 }
