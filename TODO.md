@@ -31,9 +31,19 @@ Confermato anche standalone (`node test/testOcr.js …`): l'OCR completa in ~3 s
 - [x] ~~Migliorare MRZ parsing con preprocessing immagine~~ → fatto via two-pass + whitelist (commit `d92fbcf`); preprocessing immagine vero (sharp/jimp) **non** introdotto, riservato per fase successiva se i casi attuali non bastano
 - [x] ~~Whitelist Tesseract per MRZ: `<0123456789A-Z`~~ → fatto in commit `d92fbcf`
 - [x] ~~Position-aware repair sui campi MRZ (digit vs alpha)~~ → fatto in commit successivo: mask posizionali per TD1/TD2/TD3 (ICAO Doc 9303), `O→0`/`I→1`/`S→5` ecc nelle posizioni numeriche e speculare nelle alpha. Applicata solo dopo pass-2 (whitelist OCR già attiva) su righe di lunghezza canonica esatta. Risultati: `cittadinanza` recuperata in più immagini (`6PI→GPI`, `1VA→IVA`), `dataNascita` estratta su 2 nuove immagini (`sample_front2`, `sample_generated_front1`). 7/10 → **8/10** estrazioni MRZ utili. `numeroDocumento` resta in posizioni alphanumeric (non recuperabile per design)
+- [x] ~~Bug `mapDocumentType` per TD1 italiani~~ → commit `bfa3a9c`: estesa la mappa per gestire i prefissi `CI`/`CL`/`CK`/`C<` (variante codice italiano CIE → IDELE), `CR` (residence card → null, non in elenco portale), `IR` → RIFUG, `IP` → IDENT, `PD`/`PS`/`P` → PASDI/PASSE/PASOR, `D` → PATEN.
+- [x] ~~Bug `extractPatente` regex troppo stretto~~ → commit `bfa3a9c`: regex tolleranti a `1.`/`1,`/`1 ` (separatore opzionale), separatori data `[/.-]`, lookahead invece di `^...$/m`, alfabeto esteso a accenti italiani. Risultato: patente BIANCHI da 1/7 → 5/7 campi estratti.
+- [x] ~~Rinomina specimen PRADO + mapping.txt~~ → commit `bfa3a9c`: 16 file rinominati con convenzione `<nazione>_<tipodoc>_<lato>_<variante>`, `prova.txt` → `mapping.txt` documentato.
+- [x] ~~Tessdata configurabile per variante (fast/standard/best)~~ → commit `0bc3c14`: `pluginConfig.json5` → `custom.ocrTessdataVariant`, cartelle separate per variante (`tesseract-data-standard/`, `tesseract-data-best/`) gitignored, script `downloadTessdata.js` con destinazione per-variante e hint di attivazione.
 - [ ] Espandere fieldExtractor per IDENT, IDELE, PASOR, PATEN, PATNA
 - [ ] Fix testOcr.js (one-liner)
 
+### Tessdata varianti — cose NON incluse (potenziali estensioni future)
+
+- [ ] **Cambio variante a runtime senza restart**: i due worker Tesseract caricano i `.traineddata` in RAM al primo OCR. Cambiare `pluginConfig.json5 → custom.ocrTessdataVariant` richiede restart del CMS (i `setVariant()` post-init vengono ignorati con warning). Possibile estensione: API admin per terminare e ricreare i worker on-the-fly.
+- [ ] **Variante diversa per pass-1 vs pass-2**: idea bonus dal brainstorm. Pass-1 (full OCR) potrebbe usare `fast` per velocità, pass-2 (MRZ region) potrebbe usare `best` per accuratezza massima sul testo critico. Costo: +130 MB RAM (terzo worker) e complessità di lifecycle. Da valutare empiricamente solo se la variante singola `best` non basta.
+- [ ] **Modifica automatica del `pluginConfig.json5` da script** (decisione di design chiusa, non azionabile): `scripts/downloadTessdata.js` stampa solo l'istruzione di attivazione, non tocca il file. Motivo: scrivere via `JSON.stringify` perderebbe i commenti JSON5 (vedi voce sopra) e introdurrebbe race condition se il CMS sta riscrivendo il file. Tenere la modifica manuale è la scelta più sicura.
+
 ---
 
-Branch `claude/setup-plugin-testing-8zg0M` ora a `68cd066`, allineata con il remote. La pipeline OCR è funzionante end-to-end senza dipendenze runtime da CDN esterni.
+Branch `claude/setup-plugin-testing-8zg0M` ora a `0bc3c14`, allineata con il remote. La pipeline OCR è funzionante end-to-end senza dipendenze runtime da CDN esterni; tre varianti tessdata configurabili (fast committata, standard/best scaricabili).
