@@ -4,6 +4,7 @@ const fs        = require('fs');
 const path      = require('path');
 const koaMulter = require('@koa/multer');
 const loadJson5 = require('../../core/loadJson5');
+const { setNestedField } = require('./lib/json5Writer');
 const { process: processDocument } = require('./processors');
 const { setLangs: setOcrLangs, setVariant: setOcrVariant } = require('./processors/tesseract');
 const { generateTxt }              = require('./exporters/questura');
@@ -126,14 +127,25 @@ async function installPlugin(pluginSys, pathPluginFolder) {
     hostRoleId = res.roleId;
   }
 
-  // Persiste il roleId in pluginConfig.custom. JSON.stringify perde i commenti
-  // JSON5 (coerente con il comportamento del core su userRole.json5).
+  // Persiste il roleId in pluginConfig.json5 → custom.hostRoleId con write
+  // surgical (vedi lib/json5Writer.js): aggiorna solo la riga interessata
+  // preservando commenti, indentazione, virgole trailing e chiavi non quotate
+  // del file. Niente più round-trip JSON.stringify.
+  //
+  // Aggiorniamo anche l'oggetto in memoria (pluginConfig.custom.hostRoleId)
+  // così è disponibile immediatamente per allowedRoles() senza bisogno di
+  // ricaricare il file.
   if (!pluginConfig.custom) pluginConfig.custom = {};
   pluginConfig.custom.hostRoleId = hostRoleId;
-  fs.writeFileSync(
-    path.join(pathPluginFolder, 'pluginConfig.json5'),
-    JSON.stringify(pluginConfig, null, 2),
-  );
+  const configPath = path.join(pathPluginFolder, 'pluginConfig.json5');
+  const ok = setNestedField(configPath, 'custom', 'hostRoleId', hostRoleId);
+  if (!ok) {
+    // Fallback difensivo: il blocco `custom` non esiste nel file (caso
+    // inatteso, la config bundlata l'ha sempre). Cadiamo su JSON.stringify
+    // — perderemo i commenti ma il plugin continua a funzionare.
+    console.warn('[guestRegister] custom block non trovato in pluginConfig.json5, uso JSON.stringify (commenti persi)');
+    fs.writeFileSync(configPath, JSON.stringify(pluginConfig, null, 2));
+  }
 }
 
 async function uninstallPlugin(pluginSys, pathPluginFolder) {}

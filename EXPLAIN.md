@@ -110,11 +110,16 @@ Al primo avvio, se `pluginConfig.isInstalled` è `0`, il core invoca
 }
 ```
 
-+++ ATTENZIONE +++
-La scrittura di `hostRoleId` durante `installPlugin()` è fatta con
-`JSON.stringify` e **perde i commenti JSON5** del file. Questo è coerente con il
-comportamento del core su `userRole.json5`. Dopo la prima install conviene
-rigenerare i commenti manualmente, una volta per installazione.
+La scrittura di `hostRoleId` durante `installPlugin()` usa `lib/json5Writer.js`
+con un approccio **surgical write**: il file viene letto come testo, viene
+modificata solo la riga di `hostRoleId` (o inserita una nuova entry nel blocco
+`custom` se non esiste), il resto del file resta byte-per-byte invariato.
+Commenti, indentazione, virgole trailing e chiavi non quotate sono preservati.
+
+Anche il core di `ital8cms` riscrive `pluginConfig.json5` quando flippa
+`isInstalled` (0→1) o aggiorna `installedVersion`. Dalla versione che hai del
+core, anche queste write preservano i commenti — quindi end-to-end un'install
+da zero non perde più nulla del file originale.
 
 ---
 
